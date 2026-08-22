@@ -23,10 +23,10 @@ autobe-generate:
 	cd .tools/autobe && pnpm --filter @autobe/agent run build:prompt
 	cd .tools/autobe/test && \
 	  OPENCODE_BASE_URL=$${OPENCODE_BASE_URL:-https://opencode.ai/zen/go/v1} \
-	  AUTOBE_MODEL=$${AUTOBE_MODEL:-deepseek-v4-pro} \
+	  AUTOBE_MODEL=$${AUTOBE_MODEL:-ox-alpha-free} \
 	  SEMAPHORE=$${SEMAPHORE:-4} \
 	  node --max-old-space-size=8192 -r ts-node/register src/archive/brokerdesk.ts \
-	    --model $${AUTOBE_MODEL:-deepseek-v4-pro} \
+	    --model $${AUTOBE_MODEL:-ox-alpha-free} \
 	    --from $${FROM:-analyze} \
 	    --to $${TO:-realize} \
 	    --semaphore $${SEMAPHORE:-4}

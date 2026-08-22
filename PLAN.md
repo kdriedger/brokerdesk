@@ -275,7 +275,7 @@ gateway (record-only).
 
 4. **LLM for AutoBE = opencode-go** (OpenAI-compatible endpoint
    `https://opencode.ai/zen/go/v1`, auth via `OPENCODE_API_KEY`).
-   Default generation model: `deepseek-v4-pro` (override with `--model`).
+   Default generation model: `ox-alpha-free` (override with `--model`).
 5. **Client self-service portal:** broker-only for early milestones; portal = M8.
 
 Driver: `.tools/autobe/test/src/archive/brokerdesk.ts`
