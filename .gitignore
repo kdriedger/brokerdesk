@@ -1,0 +1,11 @@
+# tools / generated / secrets
+.tools/
+node_modules/
+dist/
+build/
+*.env
+.env
+.DS_Store
+*.log
+backend/node_modules/
+frontend/build/

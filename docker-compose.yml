@@ -1,0 +1,33 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+    container_name: brokerdesk-db
+    environment:
+      POSTGRES_USER: brokerdesk
+      POSTGRES_PASSWORD: brokerdesk
+      POSTGRES_DB: brokerdesk
+    ports:
+      - "5432:5432"
+    volumes:
+      - brokerdesk_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U brokerdesk"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    image: node:25-alpine
+    container_name: brokerdesk-api
+    working_dir: /app
+    volumes:
+      - ../backend:/app
+    command: sh -c "echo 'backend container: run via make backend (pnpm dev)' && tail -f /dev/null"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+
+volumes:
+  brokerdesk_pgdata:
