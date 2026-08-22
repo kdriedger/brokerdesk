@@ -9,3 +9,4 @@ build/
 *.log
 backend/node_modules/
 frontend/build/
+.autobe-state/
