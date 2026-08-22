@@ -271,11 +271,16 @@ gateway (record-only).
 2. **Product name:** "BrokerDesk" provisional (rename is trivial).
 3. **Deployment:** self-hosted Linux/Docker assumed unless told otherwise.
 
-**Open:**
+**Decided (2026-08-22):**
 
-1. **LLM API key for AutoBE** — needed to run the generator (OpenAI-compatible
-   vendor; xAI `https://api.x.ai/v1` or DeepSeek both fit).
-2. **Client self-service portal in v1?** (default: v1 = broker-only, portal = M8).
+4. **LLM for AutoBE = opencode-go** (OpenAI-compatible endpoint
+   `https://opencode.ai/zen/go/v1`, auth via `OPENCODE_API_KEY`).
+   Default generation model: `deepseek-v4-pro` (override with `--model`).
+5. **Client self-service portal:** broker-only for early milestones; portal = M8.
+
+Driver: `.tools/autobe/test/src/archive/brokerdesk.ts`
+Requirements pack: `docs/REQUIREMENTS.md`
+State/logs: `.autobe-state/` · Generated output: `backend/`
 
 ---
 
