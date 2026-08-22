@@ -253,14 +253,29 @@ gateway (record-only).
 
 ---
 
-## 10. Open Questions (for Kevin)
+## 10. Decisions & Open Questions
 
-1. **Product name:** "BrokerDesk" OK, or something else? (trivial to rename)
-2. **Jurisdiction:** which market first (Canada? US?) — affects ACORD forms,
-   tax/broker-fee fields, currency.
-3. **Client portal:** needed in v1 or later?
-4. **LLM provider for AutoBE:** reuse grok/xAI key, or a different provider?
-5. **Deployment target:** self-hosted Linux (Docker) vs cloud — affects storage/email.
+**Decided:**
+
+1. **Jurisdiction: Canada first** (Kevin, 2026-08-22). Implications baked in:
+   - Currency **CAD** everywhere; taxes **HST/GST/QST** on broker fees (province-aware)
+   - Broker fees as explicit policy line items
+   - **Provincial broker licensing tracking** (ON: RIBO, QC: CDMP/Chambre, AB: IBAA, …)
+     — licence type + number + expiry per producer, compliance alerts (see §4 M-OPS)
+   - Province field on Organization / Client / Product eligibility; multi-province ready
+   - Forms: ACORD Canada-style proposal/schedule templates (template engine); provincial
+     form placeholders; no hard-coded regulatory XML in v1
+   - Compliance: PIPEDA-aware privacy notes; audit log from M1
+   - mvp rating engine is formula/manual — carrier APIs (FSRA-era, etc.) plug in later
+
+2. **Product name:** "BrokerDesk" provisional (rename is trivial).
+3. **Deployment:** self-hosted Linux/Docker assumed unless told otherwise.
+
+**Open:**
+
+1. **LLM API key for AutoBE** — needed to run the generator (OpenAI-compatible
+   vendor; xAI `https://api.x.ai/v1` or DeepSeek both fit).
+2. **Client self-service portal in v1?** (default: v1 = broker-only, portal = M8).
 
 ---
 
