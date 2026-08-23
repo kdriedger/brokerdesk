@@ -24,12 +24,12 @@ autobe-generate:
 	cd .tools/autobe/test && \
 	  OPENCODE_BASE_URL=$${OPENCODE_BASE_URL:-https://opencode.ai/zen/go/v1} \
 	  AUTOBE_MODEL=$${AUTOBE_MODEL:-ox-alpha-free} \
-	  SEMAPHORE=$${SEMAPHORE:-4} \
+	  SEMAPHORE=$${SEMAPHORE:-8} \
 	  node --max-old-space-size=8192 -r ts-node/register src/archive/brokerdesk.ts \
 	    --model $${AUTOBE_MODEL:-ox-alpha-free} \
 	    --from $${FROM:-analyze} \
 	    --to $${TO:-realize} \
-	    --semaphore $${SEMAPHORE:-4}
+	    --semaphore $${SEMAPHORE:-8}
 
 autobe-status:
 	@tail -n 40 .autobe-state/generate.log 2>/dev/null || echo "no generate.log yet"
