@@ -62,7 +62,8 @@ class AuthNotifier extends Notifier<AuthState> {
         ),
       );
     } catch (e) {
-      state = state.copyWith(busy: false, error: '$e');
+      final message = e is Exception ? e.toString().replaceFirst(RegExp(r'^[^:]+:\s*'), '') : '$e';
+      state = state.copyWith(busy: false, error: message);
       rethrow;
     }
     state = state.copyWith(busy: false);

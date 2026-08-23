@@ -10,3 +10,5 @@ build/
 backend/node_modules/
 frontend/build/
 .autobe-state/
+demo/raw/
+demo/*.webm

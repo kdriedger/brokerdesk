@@ -3,9 +3,9 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../core/auth/auth_state.dart';
+import '../../core/config.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -21,6 +21,20 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   bool _obscure = true;
 
   @override
+  void initState() {
+    super.initState();
+    if (AppConfig.useMock) {
+      _email.text = AppConfig.demoEmail;
+      _password.text = AppConfig.demoPassword;
+    }
+    if (AppConfig.demoTour) {
+      Future<void>.delayed(const Duration(milliseconds: 1800), () {
+        if (mounted) _submit();
+      });
+    }
+  }
+
+  @override
   void dispose() {
     _email.dispose();
     _password.dispose();
@@ -31,7 +45,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     if (!_formKey.currentState!.validate()) return;
     try {
       await ref.read(authProvider.notifier).login(_email.text.trim(), _password.text);
-      if (mounted) context.go('/dashboard');
     } catch (_) {
       // error surfaced via authProvider state
     }
@@ -40,6 +53,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final auth = ref.watch(authProvider);
+    final scheme = Theme.of(context).colorScheme;
     return Scaffold(
       body: Center(
         child: ConstrainedBox(
@@ -57,9 +71,27 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     children: [
                       Text('🦾', style: Theme.of(context).textTheme.displaySmall),
                       const SizedBox(height: 8),
-                      Text('BrokerDesk', style: Theme.of(context).textTheme.headlineMedium),
+                      Text(
+                        'BrokerDesk',
+                        style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                              fontWeight: FontWeight.w700,
+                              shadows: const [
+                                Shadow(offset: Offset(-1.5, -1.5), color: Color(0x99000000)),
+                                Shadow(offset: Offset(1.5, -1.5), color: Color(0x99000000)),
+                                Shadow(offset: Offset(-1.5, 1.5), color: Color(0x99000000)),
+                                Shadow(offset: Offset(1.5, 1.5), color: Color(0x99000000)),
+                              ],
+                            ),
+                      ),
                       const SizedBox(height: 4),
                       Text('Insurance broker workspace', style: Theme.of(context).textTheme.bodyMedium),
+                      if (AppConfig.useMock) ...[
+                        const SizedBox(height: 12),
+                        Text(
+                          'Demo mode — AutoBE backend still generating. Password: demo',
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+                        ),
+                      ],
                       const SizedBox(height: 32),
                       TextFormField(
                         controller: _email,
@@ -86,7 +118,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       ),
                       if (auth.error != null) ...[
                         const SizedBox(height: 16),
-                        Text('${auth.error}', style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                        Text('${auth.error}', style: TextStyle(color: scheme.error)),
                       ],
                       const SizedBox(height: 24),
                       FilledButton(

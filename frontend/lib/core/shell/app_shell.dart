@@ -2,12 +2,23 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-class AppShell extends StatelessWidget {
+import '../auth/auth_state.dart';
+import '../config.dart';
+
+class AppShell extends ConsumerStatefulWidget {
   const AppShell({super.key, required this.child});
 
   final Widget child;
+
+  @override
+  ConsumerState<AppShell> createState() => _AppShellState();
+}
+
+class _AppShellState extends ConsumerState<AppShell> {
+  static bool _tourStarted = false;
 
   static const _destinations = [
     (icon: Icons.dashboard_outlined, selected: Icons.dashboard, label: 'Dashboard'),
@@ -21,7 +32,27 @@ class AppShell extends StatelessWidget {
   static const _paths = ['/dashboard', '/clients', '/quotes', '/policies', '/carriers', '/reports'];
 
   @override
+  void initState() {
+    super.initState();
+    if (AppConfig.demoTour && !_tourStarted) {
+      _tourStarted = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _runTour());
+    }
+  }
+
+  Future<void> _runTour() async {
+    const pages = ['/dashboard', '/clients', '/quotes', '/policies', '/carriers', '/reports'];
+    for (final path in pages) {
+      if (!mounted) return;
+      context.go(path);
+      await Future<void>.delayed(const Duration(milliseconds: 2800));
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final user = ref.watch(authProvider).user;
+    final child = widget.child;
     return LayoutBuilder(builder: (context, constraints) {
       final wide = constraints.maxWidth >= 900;
       return Scaffold(
@@ -33,8 +64,55 @@ class AppShell extends StatelessWidget {
                 onDestinationSelected: (i) => context.go(_paths[i]),
                 labelType: NavigationRailLabelType.all,
                 leading: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Text('🦾', style: Theme.of(context).textTheme.headlineSmall),
+                  padding: const EdgeInsets.fromLTRB(8, 16, 8, 8),
+                  child: Column(
+                    children: [
+                      Text('🦾', style: Theme.of(context).textTheme.headlineSmall),
+                      const SizedBox(height: 4),
+                      Text(
+                        AppConfig.appName,
+                        style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                      ),
+                    ],
+                  ),
+                ),
+                trailing: Expanded(
+                  child: Align(
+                    alignment: Alignment.bottomCenter,
+                    child: Padding(
+                      padding: const EdgeInsets.only(bottom: 16),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (user != null) ...[
+                            CircleAvatar(
+                              radius: 16,
+                              child: Text(user.name.isEmpty ? '?' : user.name[0]),
+                            ),
+                            const SizedBox(height: 6),
+                            SizedBox(
+                              width: 80,
+                              child: Text(
+                                user.name,
+                                textAlign: TextAlign.center,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context).textTheme.labelSmall,
+                              ),
+                            ),
+                            Text(user.role, style: Theme.of(context).textTheme.labelSmall),
+                          ],
+                          IconButton(
+                            tooltip: 'Log out',
+                            icon: const Icon(Icons.logout),
+                            onPressed: () => ref.read(authProvider.notifier).logout(),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
                 destinations: [
                   for (final d in _destinations)
@@ -51,7 +129,13 @@ class AppShell extends StatelessWidget {
                   if (!wide)
                     AppBar(
                       title: const Text('BrokerDesk'),
-                      actions: [_logoutAction(context)],
+                      actions: [
+                        IconButton(
+                          tooltip: 'Log out',
+                          icon: const Icon(Icons.logout),
+                          onPressed: () => ref.read(authProvider.notifier).logout(),
+                        ),
+                      ],
                     ),
                   Expanded(child: child),
                 ],
@@ -81,13 +165,5 @@ class AppShell extends StatelessWidget {
     final path = GoRouterState.of(context).uri.path;
     final i = _paths.indexWhere((p) => path.startsWith(p));
     return i < 0 ? 0 : i;
-  }
-
-  Widget _logoutAction(BuildContext context) {
-    return IconButton(
-      tooltip: 'Log out',
-      icon: const Icon(Icons.logout),
-      onPressed: () => context.go('/login'),
-    );
   }
 }

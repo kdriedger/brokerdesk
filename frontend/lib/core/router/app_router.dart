@@ -1,6 +1,7 @@
 /// GoRouter setup with auth redirect + app shell.
 library;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -14,9 +15,18 @@ import '../../features/carriers/carriers_screen.dart';
 import '../../features/reports/reports_screen.dart';
 import '../shell/app_shell.dart';
 
+class _AuthRefresh extends ChangeNotifier {
+  _AuthRefresh(Ref ref) {
+    ref.listen<AuthState>(authProvider, (_, _) => notifyListeners());
+  }
+}
+
 final appRouterProvider = Provider<GoRouter>((ref) {
+  final refresh = _AuthRefresh(ref);
+  ref.onDispose(refresh.dispose);
   return GoRouter(
     initialLocation: '/dashboard',
+    refreshListenable: refresh,
     redirect: (context, state) {
       final authed = ref.read(authProvider).authenticated;
       final onLogin = state.matchedLocation == '/login';

@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../config.dart';
 import '../auth/auth_state.dart';
+import 'mock_api.dart';
 
 class ApiClient {
   ApiClient(this._dio);
@@ -33,6 +34,9 @@ final apiClientProvider = Provider<ApiClient>((ref) {
       headers: {'Content-Type': 'application/json'},
     ),
   );
+  if (AppConfig.useMock) {
+    dio.interceptors.add(MockApiInterceptor());
+  }
   dio.interceptors.add(
     InterceptorsWrapper(
       onRequest: (options, handler) {
@@ -43,7 +47,6 @@ final apiClientProvider = Provider<ApiClient>((ref) {
         handler.next(options);
       },
       onError: (e, handler) async {
-        // 401 → force re-login.
         if (e.response?.statusCode == 401) {
           ref.read(authProvider.notifier).logout();
         }
