@@ -16,17 +16,17 @@ autobe-install:
 	@test -d .tools/autobe || (echo "cloning autobe..." && git clone --depth=1 https://github.com/wrtnlabs/autobe .tools/autobe)
 	cd .tools/autobe && pnpm install
 
-# Requires OPENCODE_API_KEY in the environment (OpenCode Zen).
+# Requires OPENCODE_API_KEY in the environment (OpenCode Go).
 # Do NOT use --transpile-only — typia transformers must run.
 autobe-generate:
 	mkdir -p .autobe-state backend
 	cd .tools/autobe && pnpm --filter @autobe/agent run build:prompt
 	cd .tools/autobe/test && \
-	  OPENCODE_BASE_URL=$${OPENCODE_BASE_URL:-https://opencode.ai/zen/v1} \
-	  AUTOBE_MODEL=$${AUTOBE_MODEL:-x-preview-f-free} \
+	  OPENCODE_BASE_URL=$${OPENCODE_BASE_URL:-https://opencode.ai/zen/go/v1} \
+	  AUTOBE_MODEL=$${AUTOBE_MODEL:-ox-alpha-free} \
 	  SEMAPHORE=$${SEMAPHORE:-4} \
 	  node --max-old-space-size=8192 -r ts-node/register src/archive/brokerdesk.ts \
-	    --model $${AUTOBE_MODEL:-x-preview-f-free} \
+	    --model $${AUTOBE_MODEL:-ox-alpha-free} \
 	    --from $${FROM:-analyze} \
 	    --to $${TO:-realize} \
 	    --semaphore $${SEMAPHORE:-4}
