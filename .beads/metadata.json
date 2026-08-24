@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "brokerdesk",
+  "project_id": "09ae82e5-27bc-49a8-acdf-5abf6c580868"
+}

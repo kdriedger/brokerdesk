@@ -12,3 +12,9 @@ frontend/build/
 .autobe-state/
 demo/raw/
 demo/*.webm
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+*.db
+.beads-credential-key
+.beads/proxieddb/
