@@ -273,11 +273,11 @@ gateway (record-only).
 
 **Decided (2026-08-22):**
 
-4. **LLM for AutoBE = opencode-go** (OpenAI-compatible endpoint
-   `https://opencode.ai/zen/go/v1`, auth via `OPENCODE_API_KEY`).
-   Default generation model: `ox-alpha-free` (override with `--model`).
-   Makefile `AUTOBE_MODEL` default matches this. `qwen3.8-max` timeout-looped on
-   the database phase (2026-08-23: 7h+, `database.total=0`, no Prisma dump).
+4. **LLM for AutoBE = OpenCode Zen** (OpenAI-compatible endpoint
+   `https://opencode.ai/zen/v1`, auth via `OPENCODE_API_KEY` = Zen key, not Go).
+   Default generation model: `x-preview-f-free` (Zen slug for Ox Alpha Free).
+   Go workspace 5-hour cap also 429s `ox-alpha-free` (probed 2026-08-23).
+   Override with `AUTOBE_MODEL` / `OPENCODE_BASE_URL`.
 5. **Client self-service portal:** broker-only for early milestones; portal = M8.
 
 Driver: `.tools/autobe/test/src/archive/brokerdesk.ts`
