@@ -1,0 +1,764 @@
+/// In-force insurance policy binding one {@link broker_desk_clients client}
+/// of an {@link broker_desk_organizations organization} to coverage placed
+/// with a {@link broker_desk_carriers carrier} under a {@link
+/// broker_desk_products product}, written by a producing {@link
+/// broker_desk_producers user}. It anchors the post-bind lifecycle: coverage
+/// schedule lines ({@link broker_desk_policy_coverages}), mid-term
+/// endorsements ({@link broker_desk_policy_endorsements}), cancellations and
+/// reinstatements, renewals, plus downstream invoices and commissions.
+///
+/// Each row records two independent policy numbers: an
+/// organization-generated reference unique inside the brokerage, and the
+/// carrier-assigned contract number once issued. Term dates delimit the
+/// coverage period, while the status workflow tracks the lifecycle states
+/// active, pending_cancel, cancelled, expired, and lapsed. Financial figures
+/// are stored in Canadian dollars covering billed premium, brokerage fee,
+/// and taxes, alongside the agreed payment plan and the province of risk
+/// used for eligibility and taxation decisions.
+///
+/// A policy originates either from a transactional bind of an accepted
+/// {@link broker_desk_quote_lines quote line} belonging to a {@link
+/// broker_desk_quotes quote}, or from manual book-roll entry without any
+/// quoting origin; the origin links are therefore optional. Rows are
+/// soft-deleted rather than physically removed so historical contracts
+/// remain attributable and auditable.
+///
+/// @namespace Policy
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_policies {
+  //----
+  // COLUMNS
+  //----
+  /// Primary Key.
+  id String @id @db.Uuid
+  
+  /// Owning brokerage whose tenant scope contains this policy.
+  ///
+  /// Every business record belongs to exactly one {@link
+  /// broker_desk_organizations organization}; this foreign key enforces
+  /// multi-tenant isolation so queries never cross brokerage boundaries.
+  organization_id String @db.Uuid
+  
+  /// Insured {@link broker_desk_clients client} holding this contract.
+  ///
+  /// Policies always belong to a client of the same organization; the client's
+  /// history keeps every past and current policy reachable even after the
+  /// client itself is soft-deleted.
+  client_id String @db.Uuid
+  
+  /// {@link broker_desk_carriers Carrier} underwriting the coverage.
+  ///
+  /// Historical rows keep their carrier reference even after the carrier is
+  /// deactivated, which only removes future selectability.
+  carrier_id String @db.Uuid
+  
+  /// {@link broker_desk_products Product} classifying the line of business and
+  /// defining the coverage vocabulary mirrored by this policy's schedule
+  /// lines.
+  product_id String @db.Uuid
+  
+  /// Producing {@link broker_desk_producers user} accountable for the account
+  /// and credited on commissions derived from this policy.
+  ///
+  /// Reassignment changes accountability going forward without altering
+  /// historical attribution elsewhere.
+  producer_id String @db.Uuid
+  
+  /// Originating {@link broker_desk_quotes quote} when the policy was created
+  /// by binding a priced proposal; null for manually entered book-roll
+  /// policies.
+  ///
+  /// Set together with quote_line_id during the transactional bind action to
+  /// preserve provenance from the pre-sale pipeline.
+  quote_id String? @db.Uuid
+  
+  /// Accepted comparative {@link broker_desk_quote_lines quote line} serving
+  /// as the pricing basis for the bound coverage; null for manual book-roll
+  /// entry.
+  ///
+  /// Paired with quote_id, it lets the system trace exactly which carrier
+  /// option the client accepted.
+  quote_line_id String? @db.Uuid
+  
+  /// Brokerage-generated policy reference, unique within the owning
+  /// organization and shown throughout servicing screens regardless of whether
+  /// the carrier number has been issued yet.
+  org_policy_number String
+  
+  /// Carrier-assigned contract number recorded once the carrier confirms
+  /// issuance; remains unset until then because binding and carrier numbering
+  /// can happen out of band.
+  carrier_policy_number String?
+  
+  /// Lifecycle state of the coverage: active, pending_cancel, cancelled,
+  /// expired, or lapsed.
+  ///
+  /// Reinstatement restores cancelled policies to active; expiry and lapse
+  /// transitions reflect term boundaries rather than user edits alone.
+  status String
+  
+  /// First day the coverage is in force, marking the start of the policy term.
+  term_start DateTime @db.Timestamptz
+  
+  /// Last day of the current term; proximity to this date drives renewal
+  /// candidate detection and policy-expiring notifications.
+  term_end DateTime @db.Timestamptz
+  
+  /// Billed premium for the term in Canadian dollars, excluding brokerage fees
+  /// and taxes.
+  billed_premium_cad Float @db.DoublePrecision
+  
+  /// Brokerage fee charged on top of premium in Canadian dollars, taxable
+  /// according to provincial rules.
+  broker_fee_cad Float @db.DoublePrecision
+  
+  /// Total applicable sales tax amount in Canadian dollars computed from the
+  /// provincial rate table configured on the owning organization's settings.
+  tax_amount_cad Float @db.DoublePrecision
+  
+  /// Instalment plan agreed for collecting the billed amounts: annual,
+  /// semi_annual, quarterly, or monthly.
+  payment_plan String
+  
+  /// Canadian province where the insured risk is located, such as ON or QC,
+  /// feeding product eligibility checks and provincial tax treatment.
+  province_of_risk String
+  
+  /// Timestamp when the policy record was created, either through the bind
+  /// action or manual book-roll entry.
+  created_at DateTime @db.Timestamptz
+  
+  /// Timestamp of the most recent modification to the policy's own attributes,
+  /// including status transitions such as cancellation or reinstatement.
+  updated_at DateTime @db.Timestamptz
+  
+  /// Soft-deletion marker; non-null hides the policy from routine lists and
+  /// searches while preserving the contract history for audit and commission
+  /// inquiries.
+  deleted_at DateTime? @db.Timestamptz
+  
+  //----
+  // BELONGED RELATIONS,
+  //   - format: (propertyKey targetModel constraint)
+  //----
+  organization broker_desk_organizations @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+  client broker_desk_clients @relation(fields: [client_id], references: [id], onDelete: Cascade)
+  carrier broker_desk_carriers @relation(fields: [carrier_id], references: [id], onDelete: Cascade)
+  product broker_desk_products @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  producer broker_desk_producers @relation(fields: [producer_id], references: [id], onDelete: Cascade)
+  quote broker_desk_quotes? @relation(fields: [quote_id], references: [id], onDelete: Cascade)
+  quoteLine broker_desk_quote_lines? @relation(fields: [quote_line_id], references: [id], onDelete: Cascade)
+  
+  //----
+  // HAS RELATIONS
+  //   - format: (propertyKey targetModel)
+  //----
+  tasks broker_desk_tasks[]
+  coverages broker_desk_policy_coverages[]
+  endorsements broker_desk_policy_endorsements[]
+  cancellations broker_desk_policy_cancellations[]
+  priorRenewal broker_desk_policy_renewals? @relation("broker_desk_policy_renewals_of_prior_policy_id")
+  nextRenewal broker_desk_policy_renewals? @relation("broker_desk_policy_renewals_of_next_policy_id")
+  invoices broker_desk_invoices[]
+  commissions broker_desk_commissions[]
+  documentPolicyOwners broker_desk_document_policy_owners[]
+  
+  //----
+  // INDEXES
+  //----
+  @@index([client_id])
+  @@index([carrier_id])
+  @@index([product_id])
+  @@index([producer_id])
+  @@index([quote_id])
+  @@index([quote_line_id])
+  @@unique([organization_id, org_policy_number])
+  @@index([organization_id, client_id])
+  @@index([organization_id, status])
+  @@index([organization_id, term_end])
+  @@index([organization_id, producer_id])
+  @@index([organization_id, carrier_id])
+}
+
+/// Coverage schedule line attached to an insurance policy, recording the
+/// bound coverage's frozen name and code, limit, deductible, and premium
+/// contribution.
+///
+/// Each row mirrors one {@link broker_desk_coverage_items} catalogue entry
+/// of the {@link broker_desk_products} offering at the moment the {@link
+/// broker_desk_policies} record was bound or subsequently amended: the
+/// coverage name and code are snapshot copies rather than live foreign keys,
+/// so certificates of insurance and policy schedule documents render exactly
+/// what was sold even after the catalogue entry is renamed or deactivated.
+/// Because nothing depends on the catalogue, manually entered book-roll
+/// policies can also carry fully described coverage lines without a
+/// catalogue origin.
+///
+/// Monetary figures are CAD. Every active line contributes its premium
+/// toward reconciling the policy's total billed premium, while nullable
+/// limit_amount and deductible accommodate liability-style coverages that
+/// state neither a cap nor a deductible. When an issued {@link
+/// broker_desk_policy_endorsements} amendment changes the protection
+/// package, superseded lines are soft-deleted and corrected lines appended,
+/// keeping the schedule an auditable history of mid-term changes.
+///
+/// @namespace Policy
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_policy_coverages {
+  //----
+  // COLUMNS
+  //----
+  /// Primary key of the coverage schedule line.
+  id String @id @db.Uuid
+  
+  /// Reference to the parent insurance policy whose coverage schedule this
+  /// line belongs to.
+  ///
+  /// Every coverage line is bound to exactly one {@link broker_desk_policies}
+  /// record and inherits its organization, client, carrier, product, producer,
+  /// and term context; the required non-nullable relationship guarantees no
+  /// orphan schedule lines exist outside an owning policy, and soft deletion
+  /// of the policy removes its entire book of coverage lines from active
+  /// queries.
+  broker_desk_policy_id String @db.Uuid
+  
+  /// Short reference code identifying the coverage type, copied from the
+  /// catalog coverage item when the line entered the schedule.
+  ///
+  /// Frozen at bind time, the code keeps rendering, grouping, and cross-policy
+  /// comparison stable regardless of later catalogue edits; together with the
+  /// parent policy reference it lets staff read the protection package of any
+  /// {@link broker_desk_policies} record at a glance.
+  code String
+  
+  /// Human-readable coverage display name printed on certificates of insurance
+  /// and policy schedule documents.
+  ///
+  /// Mirrors the catalog coverage item name at creation time so client-facing
+  /// paperwork stays faithful to what was quoted and bound, independent of any
+  /// subsequent catalogue renaming.
+  name String
+  
+  /// Maximum payable amount for this coverage in CAD.
+  ///
+  /// Nullable because liability-style coverages carry no stated cap. When
+  /// present the value is the copy taken from the catalog coverage item's
+  /// default limit, adjustable afterwards only through issued endorsements so
+  /// the schedule always reflects the contract actually in force.
+  limit_amount Float? @db.DoublePrecision
+  
+  /// Per-claim out-of-pocket amount the insured pays before this coverage
+  /// responds, in CAD.
+  ///
+  /// Nullable because liability-type coverages typically carry no deductible;
+  /// the stored figure preserves the bound value even when the product
+  /// catalogue's defaults change later.
+  deductible Float? @db.DoublePrecision
+  
+  /// Premium contribution of this coverage line to the policy's total billed
+  /// premium, in CAD.
+  ///
+  /// The sum of all active lines reconciles against {@link
+  /// broker_desk_policies} billed premium; when an {@link
+  /// broker_desk_policy_endorsements} adjustment redistributes cost, the
+  /// affected lines' premiums are updated or superseded accordingly.
+  premium Float @db.DoublePrecision
+  
+  /// Timestamp when this coverage line entered the schedule, either at initial
+  /// policy binding or when a subsequent endorsement added it.
+  ///
+  /// Kept separate from update tracking so the original issuance moment
+  /// remains visible in schedule histories.
+  created_at DateTime @db.Timestamptz
+  
+  /// Timestamp of the most recent modification to this line, refreshed
+  /// whenever limits, deductibles, premiums, or the display name are adjusted
+  /// in place.
+  updated_at DateTime @db.Timestamptz
+  
+  /// Soft-delete timestamp marking retirement of this line from the active
+  /// coverage schedule, typically when an endorsement supersedes it with a
+  /// corrected version.
+  ///
+  /// Retained rows preserve the exact wording and amounts behind previously
+  /// issued certificates and support historical audits; null means the line is
+  /// currently part of the in-force schedule.
+  deleted_at DateTime? @db.Timestamptz
+  
+  //----
+  // BELONGED RELATIONS,
+  //   - format: (propertyKey targetModel constraint)
+  //----
+  policy broker_desk_policies @relation(fields: [broker_desk_policy_id], references: [id], onDelete: Cascade)
+  
+  //----
+  // INDEXES
+  //----
+  @@index([broker_desk_policy_id, code])
+}
+
+/// A policy endorsement records one mid-term amendment applied to an
+/// in-force {@link broker_desk_policies} record: a change to coverage,
+/// limits, deductibles, or other policy terms that takes effect on a date
+/// inside the current policy term without ending or replacing the policy
+/// itself.
+///
+/// Each endorsement captures what changed (type and description), when it
+/// applies (effective date within the term), and the financial impact as a
+/// premium delta and a fee delta in CAD. Positive deltas increase amounts
+/// owed; negative deltas reduce them. The premium delta feeds adjustment
+/// commissions downstream — {@link broker_desk_commissions} rows may
+/// optionally reference this table for mid-term compensation adjustments —
+/// while the fee delta affects billing through the invoice pipeline.
+///
+/// Endorsements follow a draft-to-issued workflow. A CSR prepares the
+/// amendment as a draft, and issuing it finalizes the change against the
+/// policy; only issued endorsements affect the in-force policy state and
+/// generate billing or commission adjustments. The staff user who created
+/// the endorsement is attributed permanently via the created-by reference,
+/// reflecting that endorsement processing is canonical
+/// service-representative work under the BrokerDesk permission model.
+///
+/// Issued endorsements are never physically deleted because they amend
+/// legally binding policy terms; soft deletion exists only to retract drafts
+/// that were recorded in error.
+///
+/// @namespace Policy
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_policy_endorsements {
+  //----
+  // COLUMNS
+  //----
+  /// Primary Key of the endorsement record.
+  id String @id @db.Uuid
+  
+  /// Reference to the in-force {@link broker_desk_policies} record being
+  /// amended by this endorsement.
+  ///
+  /// Every endorsement belongs to exactly one policy; the amendment's
+  /// effective date must fall inside the referenced policy's term start and
+  /// term end. Deleting the parent policy (soft delete) leaves its
+  /// endorsements in place as historical amendments.
+  broker_desk_policy_id String @db.Uuid
+  
+  /// Attribution of the staff user ({@link broker_desk_csrs} representative)
+  /// who created this endorsement, recording accountability for the mid-term
+  /// change.
+  ///
+  /// The acting user must belong to the same organization as the amended
+  /// policy's owning brokerage, preserving tenant isolation. This field is
+  /// permanent and never reassigned.
+  created_by String @db.Uuid
+  
+  /// Classification of the mid-term amendment being made, such as coverage
+  /// addition, coverage removal, limit change, deductible change, or
+  /// risk-detail correction.
+  ///
+  /// Stored as a free-form short code chosen by the application layer so new
+  /// endorsement categories can be introduced without schema migration.
+  type String
+  
+  /// Date on which the amendment takes effect within the policy term.
+  ///
+  /// May be a future date (planned change) or a past date within the term
+  /// (retroactive correction). Must lie between the parent policy's term start
+  /// and term end; this business rule is enforced by the service layer.
+  effective_at DateTime @db.Timestamptz
+  
+  /// Human-readable explanation of what changed on the policy, written by the
+  /// creating user for display on client-facing paperwork and internal history
+  /// views.
+  ///
+  /// Free-form text describing the amended coverage, limits, deductibles, or
+  /// other terms.
+  description String?
+  
+  /// Change in premium caused by this amendment, expressed in Canadian dollars
+  /// as a signed decimal value.
+  ///
+  /// Positive values represent additional premium owed by the client; negative
+  /// values represent return premium. Zero denotes a no-premium administrative
+  /// change. Feeds downstream adjustment commission calculations.
+  premium_delta Float @db.DoublePrecision
+  
+  /// Change in broker fee caused by this amendment, expressed in Canadian
+  /// dollars as a signed decimal value.
+  ///
+  /// Positive values add to the client's broker fees (taxable per provincial
+  /// rules); negative values reduce them. Zero denotes no fee change.
+  fee_delta Float @db.DoublePrecision
+  
+  /// Workflow status of the endorsement: draft while prepared by the CSR,
+  /// issued once finalized against the policy.
+  ///
+  /// Only issued endorsements affect the in-force policy state and generate
+  /// billing or commission adjustments; drafts have no financial effect.
+  status String
+  
+  /// Timestamp at which the endorsement was issued (finalized), null while it
+  /// remains a draft.
+  ///
+  /// Set during the draft-to-issued transition and never altered afterwards.
+  issued_at DateTime? @db.Timestamptz
+  
+  /// Timestamp at which this endorsement record was created.
+  ///
+  /// Distinguishes record creation from the business effective date, which may
+  /// be retroactive within the policy term.
+  created_at DateTime @db.Timestamptz
+  
+  /// Timestamp of the most recent update to this endorsement record, refreshed
+  /// whenever any field changes.
+  ///
+  /// Draft endorsements update freely until issued; after issuance the row
+  /// becomes effectively immutable apart from soft deletion.
+  updated_at DateTime @db.Timestamptz
+  
+  /// Soft-delete timestamp; non-null marks the endorsement as retracted and
+  /// excluded from active listings.
+  ///
+  /// Intended for retracting erroneous drafts. Issued endorsements should not
+  /// be soft-deleted because they amend binding policy terms.
+  deleted_at DateTime? @db.Timestamptz
+  
+  //----
+  // BELONGED RELATIONS,
+  //   - format: (propertyKey targetModel constraint)
+  //----
+  policy broker_desk_policies @relation(fields: [broker_desk_policy_id], references: [id], onDelete: Cascade)
+  creator broker_desk_csrs @relation(fields: [created_by], references: [id], onDelete: Cascade)
+  
+  //----
+  // HAS RELATIONS
+  //   - format: (propertyKey targetModel)
+  //----
+  commissions broker_desk_commissions[]
+  
+  //----
+  // INDEXES
+  //----
+  // spellchecker: ignore-next-line
+  @@index([broker_desk_policy_id, effective_at], map: "broker_desk_policy_endorsements_broker_desk_policy_id__1f523641")
+  @@index([status, effective_at])
+  @@index([created_by, created_at])
+}
+
+/// Early termination record cancelling an in-force {@link
+/// broker_desk_policies} policy before its scheduled term end, capturing
+/// when coverage stops, why the policy was terminated, the return premium
+/// owed back to the client, and whether the termination has fully taken
+/// effect.
+///
+/// Each cancellation belongs to exactly one policy and is bound to it at
+/// creation time. The effective date must fall inside the originating policy
+/// term, and once the termination completes, the parent policy leaves the
+/// active state. Because a reinstated policy may lawfully be cancelled again
+/// in a later cycle, a policy can accumulate several historical cancellation
+/// rows over its lifetime; the current standing of the policy itself always
+/// remains authoritative on {@link broker_desk_policies}.
+///
+/// Completion status advances from requested to completed once the effective
+/// date arrives and the termination is processed. An eligible cancellation
+/// is reversed exclusively through {@link
+/// broker_desk_policy_reinstatements}, which restore the policy to active
+/// without ever altering this original record, preserving the full
+/// termination history for compliance review. Downstream financial
+/// consequences such as client refunds and commission clawbacks flow to the
+/// Billing component ({@link broker_desk_commissions}) rather than being
+/// stored here.
+///
+/// @namespace Policy
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_policy_cancellations {
+  //----
+  // COLUMNS
+  //----
+  /// Primary key uniquely identifying the cancellation record.
+  id String @id @db.Uuid
+  
+  /// Reference to the in-force {@link broker_desk_policies} row being
+  /// terminated early.
+  ///
+  /// Every cancellation is attached to exactly one policy at creation and
+  /// cannot exist detached from it. The relationship is intentionally
+  /// one-to-many rather than unique: after {@link
+  /// broker_desk_policy_reinstatements} restore a policy to active, that same
+  /// policy can be cancelled again, producing a second historical cancellation
+  /// row.
+  broker_desk_policy_id String @db.Uuid
+  
+  /// Moment the cancellation takes effect and coverage under the policy ends.
+  ///
+  /// Must fall within the originating policy term (after term start, at or
+  /// before term end); earlier-dated requests are validated at the service
+  /// layer against {@link broker_desk_policies}. Also drives the scheduled job
+  /// that transitions requested terminations to completed.
+  effective_date DateTime @db.Timestamptz
+  
+  /// Business reason for terminating the policy before term end, recorded
+  /// verbatim from the initiating request.
+  ///
+  /// Typical values include client request, non-payment, insurer-initiated
+  /// cancellation, or misquote correction. Kept as plain descriptive text
+  /// rather than a lookup table because reasons are free-form and
+  /// audit-oriented.
+  reason String
+  
+  /// Premium refund owed back to the client for the unused remainder of the
+  /// term, expressed in CAD using pro-rata or short-rate calculation.
+  ///
+  /// Null while the refund has not yet been assessed or when no premium is
+  /// returnable; a stored zero distinguishes an assessed-but-empty refund from
+  /// an unassessed one. Actual money movement and taxation are settled through
+  /// Billing records, not duplicated here.
+  return_premium Float? @db.DoublePrecision
+  
+  /// Completion status of the termination: requested from creation until
+  /// processing concludes, then completed once the effective date has arrived
+  /// and the policy has left the active state.
+  ///
+  /// Reinstatement never rewrites this value; {@link
+  /// broker_desk_policy_reinstatements} records supersede it operationally so
+  /// the original outcome stays intact.
+  status String
+  
+  /// Timestamp when the cancellation request was recorded in the system.
+  ///
+  /// Together with updated_at it provides the audit baseline expected of
+  /// lifecycle records referenced by the organization-wide audit trail.
+  created_at DateTime @db.Timestamptz
+  
+  /// Timestamp of the most recent modification, typically the transition of
+  /// status from requested to completed or an update to the assessed return
+  /// premium.
+  ///
+  /// Maintained automatically on every mutation of the row.
+  updated_at DateTime @db.Timestamptz
+  
+  //----
+  // BELONGED RELATIONS,
+  //   - format: (propertyKey targetModel constraint)
+  //----
+  policy broker_desk_policies @relation(fields: [broker_desk_policy_id], references: [id], onDelete: Cascade)
+  
+  //----
+  // HAS RELATIONS
+  //   - format: (propertyKey targetModel)
+  //----
+  reinstatement broker_desk_policy_reinstatements?
+  
+  //----
+  // INDEXES
+  //----
+  // spellchecker: ignore-next-line
+  @@index([broker_desk_policy_id, effective_date], map: "broker_desk_policy_cancellations_broker_desk_policy_id_48d2d3a1")
+  @@index([status, effective_date])
+}
+
+/// Renewal offer record linking an expiring {@link broker_desk_policies
+/// prior-term policy} to its potential successor, carrying the offered
+/// premium and a scheduled/offered/accepted/rewritten/non_renewed/lost
+/// status workflow.
+///
+/// A renewal row is created when term-end proximity marks a policy as a
+/// renewal candidate; it initially sits in the scheduled state. When the
+/// brokerage extends terms to the client the status moves to offered and
+/// offered_at plus the offered CAD premium are stamped. A client decision
+/// resolves the record into a terminal state — accepted or rewritten (both
+/// of which generate the next-term {@link broker_desk_policies} referenced
+/// by next_policy_id), non_renewed (brokerage declined to offer further
+/// terms), or lost (client declined the offer).
+///
+/// Each renewal is bound to exactly one expiring prior policy through
+/// prior_policy_id and to at most one generated successor policy through
+/// next_policy_id, making the renewal-to-policy associations unambiguous 1:1
+/// relationships in both directions. Organization scoping via {@link
+/// broker_desk_organizations} keeps every renewal inside its brokerage
+/// tenant.
+///
+/// @namespace Policy
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_policy_renewals {
+  //----
+  // COLUMNS
+  //----
+  /// Primary key uniquely identifying the renewal offer record.
+  id String @id @db.Uuid
+  
+  /// Owning brokerage tenant for this renewal offer.
+  ///
+  /// Every business record belongs to exactly one {@link
+  /// broker_desk_organizations organization}; this mandatory reference
+  /// enforces multi-tenant isolation so renewal pipelines are always queried
+  /// within a single brokerage.
+  organization_id String @db.Uuid
+  
+  /// Expiring prior-term {@link broker_desk_policies policy} that this renewal
+  /// seeks to continue.
+  ///
+  /// Mandatory because a renewal cannot exist without the contract it
+  /// continues, and unique so each policy carries at most one renewal record —
+  /// a clean 1:1 link that lets term-end proximity scans detect renewal
+  /// candidates directly from the policy roster.
+  prior_policy_id String @db.Uuid
+  
+  /// Next-term {@link broker_desk_policies policy} generated when this renewal
+  /// was accepted or rewritten.
+  ///
+  /// Remains null while the renewal is merely scheduled, offered, non_renewed,
+  /// or lost, and becomes populated upon acceptance so the successor contract
+  /// carries a durable backlink to the negotiation that produced it. Unique to
+  /// guarantee a single renewal yields at most one successor policy.
+  next_policy_id String? @db.Uuid
+  
+  /// Current stage of the renewal workflow.
+  ///
+  /// Allowed values: scheduled (candidate detected by term-end proximity),
+  /// offered (terms presented to the client), accepted (client agreed and the
+  /// next-term policy was generated), rewritten (business rewritten onto a new
+  /// successor policy), non_renewed (brokerage elected not to offer further
+  /// terms), lost (client declined the offer). Drives {@link
+  /// broker_desk_notifications renewal-due} alerting and pipeline reporting.
+  status String
+  
+  /// Annual premium quoted for the next policy term, expressed in CAD.
+  ///
+  /// Null while the renewal remains merely scheduled because nothing has been
+  /// priced yet; recorded when terms are offered and retained afterwards so
+  /// historical offers stay comparable against the prior term's billed premium
+  /// even after the successor policy exists.
+  offered_premium_cad Float? @db.DoublePrecision
+  
+  /// Moment the renewal terms were formally extended to the client.
+  ///
+  /// Null until the status transitions from scheduled to offered; supports
+  /// turnaround measurement between candidate detection and offer delivery.
+  offered_at DateTime? @db.Timestamptz
+  
+  /// Moment the renewal reached a terminal decision (accepted, rewritten,
+  /// non_renewed, or lost).
+  ///
+  /// Null until resolution; enables renewal-outcome reporting and
+  /// acceptance-rate analysis over calendar periods.
+  decided_at DateTime? @db.Timestamptz
+  
+  /// Free-form remarks about the renewal negotiation, such as pricing
+  /// rationale, client objections, or conditions attached to the offer.
+  notes String?
+  
+  /// Timestamp when the renewal record was created as a scheduled candidate.
+  created_at DateTime @db.Timestamptz
+  
+  /// Timestamp of the most recent modification to the renewal record,
+  /// reflecting status transitions and offer updates.
+  updated_at DateTime @db.Timestamptz
+  
+  /// Soft-delete timestamp; null while the renewal is active, set when the
+  /// record is withdrawn so lifecycle history is preserved without physical
+  /// removal.
+  deleted_at DateTime? @db.Timestamptz
+  
+  //----
+  // BELONGED RELATIONS,
+  //   - format: (propertyKey targetModel constraint)
+  //----
+  organization broker_desk_organizations @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+  priorPolicy broker_desk_policies @relation("broker_desk_policy_renewals_of_prior_policy_id", fields: [prior_policy_id], references: [id], onDelete: Cascade)
+  nextPolicy broker_desk_policies? @relation("broker_desk_policy_renewals_of_next_policy_id", fields: [next_policy_id], references: [id], onDelete: Cascade)
+  
+  //----
+  // INDEXES
+  //----
+  @@unique([prior_policy_id])
+  @@unique([next_policy_id])
+  @@index([organization_id, status])
+}
+
+/// Reversal record restoring a cancelled {@link broker_desk_policies} policy
+/// to active status.
+///
+/// Each reinstatement points at exactly one prior early termination ({@link
+/// broker_desk_policy_cancellations}) whose effect it reverses; the original
+/// cancellation row is never altered or deleted, so the full
+/// cancel-and-restore history of a policy remains auditable. A reinstatement
+/// can be recorded only once per cancellation, enforced by a unique
+/// constraint on the cancellation reference.
+///
+/// Restoration is a service-side transaction performed by a {@link
+/// broker_desk_csrs} representative, whose identity is captured for
+/// accountability alongside the reversal effective date and free-form
+/// commentary covering carrier authorization or returned-premium repayment
+/// conditions.
+///
+/// @namespace Policy
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_policy_reinstatements {
+  //----
+  // COLUMNS
+  //----
+  /// Primary key uniquely identifying the reinstatement record.
+  id String @id @db.Uuid
+  
+  /// Reference to the {@link broker_desk_policy_cancellations} record being
+  /// reversed.
+  ///
+  /// Every reinstatement undoes exactly one prior early termination, and the
+  /// unique constraint on this column guarantees a given cancellation cannot
+  /// be reinstated twice. The affected policy is reached through this
+  /// cancellation, so the policy link is not duplicated on the reinstatement
+  /// itself, keeping the schema free of transitive redundancy.
+  broker_desk_policy_cancellation_id String @db.Uuid
+  
+  /// Reference to the {@link broker_desk_csrs} representative who performed
+  /// the reinstatement.
+  ///
+  /// Restoring a cancelled policy to active standing is a client-servicing
+  /// transaction on the service side of the agency, so the acting staff member
+  /// is recorded permanently for accountability. A representative may perform
+  /// many reinstatements over time.
+  broker_desk_csr_id String @db.Uuid
+  
+  /// Moment from which the reversal takes effect and the {@link
+  /// broker_desk_policies} record stands restored to active status.
+  ///
+  /// Kept separate from created_at because a reinstatement may be entered
+  /// after the agreed restoration moment, such as when backdated clearance of
+  /// a returned premium is confirmed.
+  effective_at DateTime @db.Timestamptz
+  
+  /// Free-form commentary explaining the reinstatement circumstances, such as
+  /// returned-premium repayment, carrier authorization details, or
+  /// underwriting conditions attached to the restoration.
+  ///
+  /// Nullable because some restorations proceed without special conditions
+  /// worth recording.
+  notes String?
+  
+  /// Timestamp marking when the reinstatement record was created.
+  created_at DateTime @db.Timestamptz
+  
+  /// Timestamp marking when the reinstatement record was last modified, for
+  /// example when notes were corrected.
+  updated_at DateTime @db.Timestamptz
+  
+  /// Soft-delete timestamp hiding an erroneous reinstatement entry from normal
+  /// queries while preserving the audit trail of the original cancellation it
+  /// had reversed.
+  deleted_at DateTime? @db.Timestamptz
+  
+  //----
+  // BELONGED RELATIONS,
+  //   - format: (propertyKey targetModel constraint)
+  //----
+  // spellchecker: ignore-next-line
+  cancellation broker_desk_policy_cancellations @relation(fields: [broker_desk_policy_cancellation_id], references: [id], onDelete: Cascade, map: "broker_desk_policy_reinstatements_broker_desk_policy_c_b4776b56")
+  csr broker_desk_csrs @relation(fields: [broker_desk_csr_id], references: [id], onDelete: Cascade)
+  
+  //----
+  // INDEXES
+  //----
+  // spellchecker: ignore-next-line
+  @@unique([broker_desk_policy_cancellation_id], map: "broker_desk_policy_reinstatements_broker_desk_policy_c_7a89f219")
+  // spellchecker: ignore-next-line
+  @@index([broker_desk_csr_id, created_at], map: "broker_desk_policy_reinstatements_broker_desk_csr_id_c_b9a40cba")
+}

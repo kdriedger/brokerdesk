@@ -1,0 +1,994 @@
+/// Contact persons belonging to business clients, holding each individual's
+/// name, job title, and contact coordinates together with a primary-contact
+/// designation so staff know whom to call first.
+///
+/// {@link broker_desk_client_contacts} rows always hang off exactly one
+/// {@link broker_desk_clients} record; a business client may hold many
+/// contacts covering owners, managers, and administrative personnel, while
+/// individual clients typically carry none because the {@link
+/// broker_desk_clients} row itself already holds their direct details.
+///
+/// Each entry records the person's display name, an optional job title
+/// describing their role inside the client's organization, and optional
+/// email and telephone coordinates — either coordinate may be absent when a
+/// person is reachable through only one channel. The is_primary flag
+/// designates the client's preferred main point of contact for routine
+/// servicing; exactly one primary designation is maintained at the
+/// application layer, supported by the composite index on ({@link
+/// broker_desk_client_id}, is_primary) that resolves primary-contact lookups
+/// efficiently.
+///
+/// Rows follow standard temporal bookkeeping: created_at marks when the
+/// contact entered the directory, updated_at tracks detail revisions, and
+/// deleted_at soft-deletes departed or retired contacts so historical {@link
+/// broker_desk_activities} and correspondence remain attributable to real
+/// people.
+///
+/// @namespace Crm
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_client_contacts {
+  //----
+  // COLUMNS
+  //----
+  /// Primary Key.
+  id String @id @db.Uuid
+  
+  /// Reference to the business client this contact person belongs to.
+  ///
+  /// Every contact is anchored to exactly one {@link broker_desk_clients}
+  /// record, while one business client holds many contacts across its staff.
+  /// Tenant isolation flows transitively through the parent client's
+  /// organization membership, so no separate organization column is required.
+  broker_desk_client_id String @db.Uuid
+  
+  /// Full display name of the contact person.
+  ///
+  /// Recorded as provided by staff (for example "Marie Tremblay") and used to
+  /// identify the contact in listings, correspondence, and activity
+  /// attribution.
+  name String
+  
+  /// Job title or role of the contact person within the client's organization.
+  ///
+  /// Optional because many small-business contacts carry no formal title.
+  title String?
+  
+  /// Email address used to reach the contact person.
+  ///
+  /// Nullable because some contacts are reachable only by telephone.
+  email String?
+  
+  /// Telephone number of the contact person.
+  ///
+  /// Held as free-form text to accommodate North American formats, extensions,
+  /// and toll-free numbers.
+  phone String?
+  
+  /// Designates the client's preferred main contact for routine servicing.
+  ///
+  /// Exactly one primary designation is maintained per business client at the
+  /// application layer; the composite index on ({@link broker_desk_client_id},
+  /// is_primary) makes resolving that contact efficient.
+  is_primary Boolean
+  
+  /// Timestamp when the contact was recorded in the client's contact directory.
+  created_at DateTime @db.Timestamptz
+  
+  /// Timestamp of the most recent modification to the contact's details.
+  updated_at DateTime @db.Timestamptz
+  
+  /// Soft-deletion timestamp marking when the contact left the client
+  /// organization or was retired from the directory.
+  ///
+  /// Retaining soft-deleted rows keeps historical activities and
+  /// correspondence attributable to real people.
+  deleted_at DateTime? @db.Timestamptz
+  
+  //----
+  // BELONGED RELATIONS,
+  //   - format: (propertyKey targetModel constraint)
+  //----
+  client broker_desk_clients @relation(fields: [broker_desk_client_id], references: [id], onDelete: Cascade)
+  
+  //----
+  // INDEXES
+  //----
+  // spellchecker: ignore-next-line
+  @@index([broker_desk_client_id, is_primary], map: "broker_desk_client_contacts_broker_desk_client_id_is_p_68b91cee")
+  @@index([broker_desk_client_id, name])
+}
+
+/// Typed civic address shared across the brokerage domain, holding purpose
+/// classification among mailing, billing, and risk along with street lines,
+/// unit line, city, province, postal code, and soft-delete lifecycle.
+///
+/// {@link broker_desk_addresses} exists as one normalized location store
+/// rather than duplicated per-owner columns: every business record needing
+/// an address attaches rows from this table through dedicated owner-link
+/// child tables ({@link broker_desk_address_of_clients} for client locations
+/// and {@link broker_desk_address_of_organizations} for brokerage office
+/// locations). A risk-typed address identifies the insured location whose
+/// province drives coverage eligibility evaluation against {@link
+/// broker_desk_products} eligibility rules and selects the applicable rate
+/// from the organization's configured tax table, while mailing and billing
+/// addresses receive correspondence and anchor invoice correspondence
+/// respectively.
+///
+/// Ownership is resolved exclusively through the link tables, each enforcing
+/// a single-owner rule via a unique constraint on the address reference, so
+/// an address row never carries polymorphic or nullable owner keys of its
+/// own.
+///
+/// @namespace Crm
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_addresses {
+  //----
+  // COLUMNS
+  //----
+  /// Primary key of the address record.
+  id String @id @db.Uuid
+  
+  /// Purpose classification of the address among the supported values mailing,
+  /// billing, and risk.
+  ///
+  /// Mailing addresses receive correspondence, billing addresses anchor
+  /// invoicing correspondence, and risk addresses identify the insured
+  /// location whose province participates in coverage eligibility validation
+  /// against {@link broker_desk_products} eligibility rules and sales-tax
+  /// treatment.
+  type String
+  
+  /// Primary street portion of the address such as the civic number and street
+  /// name.
+  ///
+  /// Rendered as the first addressing line on envelopes, certificates, and
+  /// paperwork generated from document templates.
+  line1 String
+  
+  /// Optional supplementary addressing line holding apartment, unit, suite, or
+  /// floor details.
+  ///
+  /// Null whenever the location needs no secondary designation.
+  line2 String?
+  
+  /// Municipality or city name of the location.
+  ///
+  /// Displayed on client profiles and documents and used together with
+  /// province for regional filtering of locations.
+  city String
+  
+  /// Two-letter Canadian province or territory code of the location such as
+  /// ON, QC, AB, or BC.
+  ///
+  /// When the address is a risk location, this province participates in
+  /// product eligibility evaluation and selects the applicable rate from the
+  /// organization's configured tax table.
+  province String
+  
+  /// Canadian postal code of the location in the A1A 1A1 pattern.
+  ///
+  /// Completes the civic address for mail delivery and serves as a carrier
+  /// rating input.
+  postal_code String
+  
+  /// Timestamp when the address record was created.
+  created_at DateTime @db.Timestamptz
+  
+  /// Timestamp when the address record was last modified.
+  updated_at DateTime @db.Timestamptz
+  
+  /// Nullable timestamp marking soft deletion of the address; null while the
+  /// address remains active and referenced by its owning {@link
+  /// broker_desk_clients} or {@link broker_desk_organizations} record.
+  deleted_at DateTime? @db.Timestamptz
+  
+  //----
+  // HAS RELATIONS
+  //   - format: (propertyKey targetModel)
+  //----
+  clientOwner broker_desk_address_of_clients?
+  organizationOwner broker_desk_address_of_organizations?
+  billingInvoices broker_desk_invoices[]
+  
+  //----
+  // INDEXES
+  //----
+  @@index([province, city])
+}
+
+/// Client interaction history entry typed call, email, meeting, note, or
+/// other, recording what happened with a client and permanently attributing
+/// which staff member logged it.
+///
+/// Each activity belongs to exactly one {@link broker_desk_clients} record
+/// and carries four descriptive elements: a type classifying the interaction
+/// (call, email, and meeting record external touchpoints between brokerage
+/// and client; note records internal knowledge such as a remembered client
+/// preference; other is the catch-all preventing genuine interactions being
+/// forced into the nearest wrong category), a short staff-written subject
+/// headline so readers grasp entries while scanning a long history, a
+/// free-form body holding the actual substance of what was discussed,
+/// agreed, or observed, and an occurred_at moment recording when the
+/// interaction genuinely took place — deliberately separate from created_at
+/// so evening batch logging of a day's visits keeps the history truthful.
+///
+/// Attribution is permanent and polymorphic: the logging staff member is
+/// either a producer or a CSR, resolved through exclusive {@link
+/// broker_desk_activity_of_producers} or {@link
+/// broker_desk_activity_of_csrs} authorship records rather than competing
+/// nullable foreign keys. Permanent attribution preserves institutional
+/// memory — successors reconstruct the relationship from the timeline
+/// instead of relying on verbal handover, and disputed promises trace to the
+/// exact person and wording recorded at the time.
+///
+/// Activities accumulate into each client's continuous communication history
+/// ordered by occurred_at, weaving together with tasks, quotes, and policies
+/// into the chronological client timeline serving as the relationship's
+/// shared institutional memory.
+///
+/// @namespace Crm
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_activities {
+  //----
+  // COLUMNS
+  //----
+  /// Primary Key.
+  id String @id @db.Uuid
+  
+  /// Client whose communication history contains this activity.
+  ///
+  /// Every activity documents an interaction with exactly one {@link
+  /// broker_desk_clients} record and cannot exist without it; the reference
+  /// anchors the entry into that client's chronological timeline and scopes
+  /// visibility to staff servicing the client.
+  broker_desk_client_id String @db.Uuid
+  
+  /// Classification of the documented interaction: call, email, meeting, note,
+  /// or other.
+  ///
+  /// Call, email, and meeting record external touchpoints between the
+  /// brokerage and the client, while note records internal knowledge that
+  /// never left the brokerage; other exists so staff never distort the record
+  /// by forcing a meaningful interaction into the nearest wrong category.
+  type String
+  
+  /// Short staff-written headline naming the interaction, such as "Renewal
+  /// review call".
+  ///
+  /// Exists so a reader scanning a long history can grasp each entry at a
+  /// glance without opening it; merely indexes the fuller body narrative.
+  subject String
+  
+  /// Free-form substance of the entry: what was discussed, what was agreed,
+  /// what was observed.
+  ///
+  /// This is where the actual content of the relationship lives; the subject
+  /// merely indexes it. Keyword-searchable so staff can reconstruct promises
+  /// or decisions made during past interactions.
+  body String
+  
+  /// Point in time when the interaction actually took place.
+  ///
+  /// Deliberately separated from the created_at write time: a broker finishing
+  /// a day of site visits may log several entries in the evening, each
+  /// pointing back to when the conversation genuinely happened, keeping the
+  /// history truthful for batch-recorded entries and anchoring the entry's
+  /// position on the client timeline.
+  occurred_at DateTime @db.Timestamptz
+  
+  /// When the activity entry was written into the system.
+  ///
+  /// Distinct from occurred_at, which records when the interaction itself
+  /// happened.
+  created_at DateTime @db.Timestamptz
+  
+  /// When the activity entry was last revised after its initial logging.
+  updated_at DateTime @db.Timestamptz
+  
+  /// Soft-delete marker hiding an erroneous entry from the timeline while
+  /// retaining the row, respecting the historical-record character of the
+  /// communication history.
+  deleted_at DateTime? @db.Timestamptz
+  
+  //----
+  // BELONGED RELATIONS,
+  //   - format: (propertyKey targetModel constraint)
+  //----
+  client broker_desk_clients @relation(fields: [broker_desk_client_id], references: [id], onDelete: Cascade)
+  
+  //----
+  // HAS RELATIONS
+  //   - format: (propertyKey targetModel)
+  //----
+  producerAuthorship broker_desk_activity_of_producers?
+  csrAuthorship broker_desk_activity_of_csrs?
+  
+  //----
+  // INDEXES
+  //----
+  @@index([broker_desk_client_id, occurred_at])
+  @@index([type, occurred_at])
+  @@index([body(ops: raw("gin_trgm_ops"))], type: Gin)
+  @@index([subject(ops: raw("gin_trgm_ops"))], type: Gin)
+}
+
+/// Follow-up work item assigned to a staff member of the owning brokerage,
+/// carrying a title, optional description, due date, and an
+/// open/done/cancelled status, optionally anchored to a {@link
+/// broker_desk_clients} client record or {@link broker_desk_policies} policy
+/// so context travels with the work.
+///
+/// Every task belongs to exactly one {@link broker_desk_organizations},
+/// whose envelope scopes all task visibility and coordination. The client
+/// and policy anchors are both optional: tasks arise from general agency
+/// housekeeping as well as from servicing a specific relationship, and a
+/// client-anchored task integrates into that client's timeline alongside
+/// {@link broker_desk_activities}, quotes, and policies.
+///
+/// The status lifecycle runs among open (work still owed), done (completed),
+/// and cancelled (withdrawn); due dates are kept accurate as circumstances
+/// change so time-sensitive obligations surface as task-due {@link
+/// broker_desk_notifications}. Customer service representatives coordinate
+/// task life across the entire agency — creating work on behalf of any
+/// colleague and routing it appropriately — while producers and
+/// administrators see the tasks assigned to them.
+///
+/// Because the acting staff roles are maintained as separate identity
+/// tables, the assignee is never held as multiple nullable staff foreign
+/// keys here; instead, exactly one assignment row exists in {@link
+/// broker_desk_task_of_admins}, {@link broker_desk_task_of_producers}, or
+/// {@link broker_desk_task_of_csrs} for every assigned task.
+///
+/// @namespace Crm
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_tasks {
+  //----
+  // COLUMNS
+  //----
+  /// Primary Key.
+  id String @id @db.Uuid
+  
+  /// Owning brokerage tenant of this task.
+  ///
+  /// Every task is created inside exactly one {@link
+  /// broker_desk_organizations} and inherits its data envelope; tenant
+  /// isolation confines all task listings, searches, and coordination to this
+  /// organization, and the link stays mandatory even when neither the client
+  /// nor the policy anchor is set.
+  organization_id String @db.Uuid
+  
+  /// Optional client anchor of this work item.
+  ///
+  /// When set, the task concerns the {@link broker_desk_clients} record
+  /// identified here and integrates into its timeline next to activities,
+  /// quotes, and policies; left unset when the task arises from coordination
+  /// that is not tied to one relationship.
+  client_id String? @db.Uuid
+  
+  /// Optional policy anchor of this work item.
+  ///
+  /// When set, the task concerns the {@link broker_desk_policies} record
+  /// identified here — for example a renewal follow-up, endorsement chase, or
+  /// cancellation chore — usable together with or instead of the client
+  /// anchor.
+  policy_id String? @db.Uuid
+  
+  /// Short human-readable summary of the promised work, displayed in
+  /// assignment queues, client timelines, and notification titles.
+  title String
+  
+  /// Longer free-form elaboration of what the task requires, recorded when the
+  /// title alone cannot carry the necessary detail.
+  description String?
+  
+  /// Moment by which the task should be completed.
+  ///
+  /// Kept accurate as circumstances change so time-sensitive obligations
+  /// surface correctly; drives task-due {@link broker_desk_notifications} and
+  /// due-date ordering inside staff queues.
+  due_at DateTime @db.Timestamptz
+  
+  /// Lifecycle standing of the work: open while still owed, done once
+  /// completed, or cancelled when withdrawn before completion.
+  ///
+  /// Only open tasks count toward outstanding-work views and feed due-date
+  /// alerting.
+  status String
+  
+  /// Creation timestamp of the task, fixing its original position in client
+  /// timelines and agency activity history.
+  created_at DateTime @db.Timestamptz
+  
+  /// Timestamp of the most recent modification, reflecting due-date
+  /// adjustments, status transitions, and content edits.
+  updated_at DateTime @db.Timestamptz
+  
+  //----
+  // BELONGED RELATIONS,
+  //   - format: (propertyKey targetModel constraint)
+  //----
+  organization broker_desk_organizations @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+  client broker_desk_clients? @relation(fields: [client_id], references: [id], onDelete: Cascade)
+  policy broker_desk_policies? @relation(fields: [policy_id], references: [id], onDelete: Cascade)
+  
+  //----
+  // HAS RELATIONS
+  //   - format: (propertyKey targetModel)
+  //----
+  adminAssignment broker_desk_task_of_admins?
+  producerAssignment broker_desk_task_of_producers?
+  csrAssignment broker_desk_task_of_csrs?
+  
+  //----
+  // INDEXES
+  //----
+  @@index([organization_id, status, due_at])
+  @@index([client_id, created_at])
+  @@index([policy_id, due_at])
+  @@index([title(ops: raw("gin_trgm_ops"))], type: Gin)
+}
+
+/// Normalized tag assignments for {@link broker_desk_clients} records,
+/// storing exactly one row per tag value so clients can be filtered,
+/// searched, and segmented by individual tags.
+///
+/// This table replaces a non-normalized tags[] array on the client profile:
+/// each tag is an atomic string row referencing exactly one client through
+/// {@link broker_desk_clients}. Tenancy is inherited from the owning client
+/// rather than duplicated on the tag row, preserving third normal form. A
+/// composite unique constraint on (broker_desk_client_id, value) guarantees
+/// the same tag text cannot attach twice to one client while still allowing
+/// shared tags across different clients. A dedicated index on value enables
+/// brokerage-wide tag browsing and client-list filtering by tag
+/// independently of the client-leading unique index.
+///
+/// Removal of a tag performs a soft delete by stamping deleted_at, keeping
+/// assignment history auditable alongside the owning client's own
+/// soft-delete lifecycle.
+///
+/// @namespace Crm
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_client_tags {
+  //----
+  // COLUMNS
+  //----
+  /// Primary key of this tag assignment row.
+  id String @id @db.Uuid
+  
+  /// Reference to the {@link broker_desk_clients} record this tag belongs to.
+  ///
+  /// Every tag row attaches to exactly one existing client; removing the tag
+  /// or retiring its parent client soft-deletes the row so assignment history
+  /// stays retrievable.
+  broker_desk_client_id String @db.Uuid
+  
+  /// The atomic tag text assigned to the client (for example "vip",
+  /// "construction", "renewal-risk").
+  ///
+  /// Stored as its own row per assignment under first normal form; application
+  /// logic normalizes casing and whitespace before insert, while the
+  /// (broker_desk_client_id, value) unique index rejects exact duplicates.
+  value String
+  
+  /// Timestamp when this tag was assigned to the client.
+  created_at DateTime @db.Timestamptz
+  
+  /// Timestamp when this tag assignment row was last modified.
+  updated_at DateTime @db.Timestamptz
+  
+  /// Soft-delete timestamp marking when the tag stopped applying to the
+  /// client; null while the tag is active, set when removed so assignment
+  /// history remains retrievable.
+  deleted_at DateTime? @db.Timestamptz
+  
+  //----
+  // BELONGED RELATIONS,
+  //   - format: (propertyKey targetModel constraint)
+  //----
+  client broker_desk_clients @relation(fields: [broker_desk_client_id], references: [id], onDelete: Cascade)
+  
+  //----
+  // INDEXES
+  //----
+  @@unique([broker_desk_client_id, value])
+  @@index([value])
+}
+
+/// Ownership junction binding a typed address to exactly one owning {@link
+/// broker_desk_clients} client, covering every client-attached mailing,
+/// billing, and risk location under the single-owner rule.
+///
+/// The shared {@link broker_desk_addresses} space lets any address be
+/// claimed by at most one owner at a time. This table records the client
+/// side of that claim: the unique constraint on the address reference
+/// prevents an address from being simultaneously owned by a second party
+/// (such as the brokerage itself through {@link
+/// broker_desk_address_of_organizations}), while one client may freely
+/// accumulate many addresses across multiple rows.
+///
+/// Business meaning follows the referenced address classification: risk
+/// locations attached here drive coverage eligibility checks and
+/// province-aware taxation, mailing locations receive client correspondence,
+/// and billing locations anchor invoice delivery. Because classification and
+/// geography live solely on the referenced address row, this junction stores
+/// pure ownership without transitive copies.
+///
+/// Rows are created when staff attach an address to a client and physically
+/// removed upon detachment — soft deletion is reserved for core business
+/// entities, not ownership bindings. Temporal columns capture when each
+/// attachment was made and last revised.
+///
+/// @namespace Crm
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_address_of_clients {
+  //----
+  // COLUMNS
+  //----
+  /// Primary key uniquely identifying each address-to-client ownership binding.
+  id String @id @db.Uuid
+  
+  /// Reference to the typed address being attached to its client owner.
+  ///
+  /// Each {@link broker_desk_addresses} row may be claimed by at most one
+  /// owner anywhere in the system, so this foreign key carries a unique
+  /// constraint. The referenced address row holds the physical location fields
+  /// (street lines, city, province, postal code) and the address
+  /// classification (mailing, billing, or risk); this junction contributes
+  /// ownership only, avoiding any duplication of address data.
+  broker_desk_address_id String @db.Uuid
+  
+  /// Reference to the {@link broker_desk_clients} client that owns the bound
+  /// address.
+  ///
+  /// A client may hold several distinct locations — separate mailing, billing,
+  /// and risk addresses — so this side of the relationship is one-to-many.
+  /// Risk locations attached through this link serve as the basis for coverage
+  /// eligibility evaluation and province-aware premium taxation, while mailing
+  /// and billing locations support correspondence and invoicing workflows.
+  broker_desk_client_id String @db.Uuid
+  
+  /// Timestamp recording when the address was attached to the client.
+  created_at DateTime @db.Timestamptz
+  
+  /// Timestamp of the most recent revision to the ownership binding, refreshed
+  /// whenever the attachment metadata changes.
+  updated_at DateTime @db.Timestamptz
+  
+  //----
+  // BELONGED RELATIONS,
+  //   - format: (propertyKey targetModel constraint)
+  //----
+  address broker_desk_addresses @relation(fields: [broker_desk_address_id], references: [id], onDelete: Cascade)
+  client broker_desk_clients @relation(fields: [broker_desk_client_id], references: [id], onDelete: Cascade)
+  
+  //----
+  // INDEXES
+  //----
+  @@unique([broker_desk_address_id])
+  // spellchecker: ignore-next-line
+  @@index([broker_desk_client_id, broker_desk_address_id], map: "broker_desk_address_of_clients_broker_desk_client_id_b_5ac3761e")
+}
+
+/// Ownership link binding a typed {@link broker_desk_addresses} record to
+/// exactly one {@link broker_desk_organizations} brokerage tenant, allowing
+/// the shared address space to serve office locations without duplicating
+/// address data.
+///
+/// The table enforces the single-owner invariant: every organization-owned
+/// address appears here exactly once, guaranteed by a unique constraint on
+/// the address foreign key. An address therefore resolves either to a client
+/// owner ({@link broker_desk_address_of_clients}) or to an organization
+/// owner through this table, never both. Because the binding is established
+/// once when the address is attached and is never reassigned, rows are
+/// append-only and carry only a creation timestamp.
+///
+/// Listing an organization's office locations filters by the organization
+/// reference; the composite index covering organization and address
+/// references keeps those tenant-scoped listings efficient.
+///
+/// @namespace Crm
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_address_of_organizations {
+  //----
+  // COLUMNS
+  //----
+  /// Primary key of the ownership link row.
+  id String @id @db.Uuid
+  
+  /// Reference to the typed {@link broker_desk_addresses} record claimed as an
+  /// organization location.
+  ///
+  /// Unique and mandatory: each address row can be bound to at most one owner,
+  /// so this column acts as the 1:1 discriminator separating
+  /// organization-owned addresses from client-owned ones recorded in {@link
+  /// broker_desk_address_of_clients}.
+  broker_desk_address_id String @db.Uuid
+  
+  /// Reference to the {@link broker_desk_organizations} brokerage tenant
+  /// owning the linked address.
+  ///
+  /// Mandatory because every ownership row must resolve to a concrete
+  /// organization; many ownership rows may point at the same organization,
+  /// together forming its roster of office locations.
+  broker_desk_organization_id String @db.Uuid
+  
+  /// Timestamp recording when the address was first bound to the organization.
+  ///
+  /// Kept separate from any business semantics: the binding itself is
+  /// immutable, so no update or deletion timestamp applies to ownership rows.
+  created_at DateTime @db.Timestamptz
+  
+  //----
+  // BELONGED RELATIONS,
+  //   - format: (propertyKey targetModel constraint)
+  //----
+  // spellchecker: ignore-next-line
+  address broker_desk_addresses @relation(fields: [broker_desk_address_id], references: [id], onDelete: Cascade, map: "broker_desk_address_of_organizations_broker_desk_addre_1b7e91c1")
+  // spellchecker: ignore-next-line
+  organization broker_desk_organizations @relation(fields: [broker_desk_organization_id], references: [id], onDelete: Cascade, map: "broker_desk_address_of_organizations_broker_desk_organ_04b2e4c6")
+  
+  //----
+  // INDEXES
+  //----
+  @@unique([broker_desk_address_id])
+  // spellchecker: ignore-next-line
+  @@index([broker_desk_organization_id, broker_desk_address_id], map: "broker_desk_address_of_organizations_broker_desk_organ_c4962a51")
+}
+
+/// Producer-authorship attribution row identifying exactly which {@link
+/// broker_desk_producers} sales broker logged a given {@link
+/// broker_desk_activities} client-timeline entry.
+///
+/// The CRM activity feed is a shared servicing space where both producers
+/// and customer service representatives file interactions such as calls,
+/// emails, meetings, notes, and other contact records. Because actor
+/// identity differs by role kind, authorship is normalized into dedicated
+/// one-to-one link tables instead of multiple nullable actor foreign keys on
+/// the shared entry itself: producer-written entries resolve their author
+/// through this table, while CSR-written entries resolve through the sibling
+/// {@link broker_desk_activity_of_csrs}. Exactly one row exists here per
+/// producer-authored activity, enforced by a unique constraint on the
+/// activity reference.
+///
+/// Each row carries two immutable references - the attributed timeline entry
+/// and the logging {@link broker_desk_producers} account - plus creation and
+/// update timestamps supporting chronological reconstruction of an
+/// individual broker's contribution history across every client book they
+/// service.
+///
+/// Rows are append-only once written; they are never independently
+/// soft-deleted, because removal travels with the parent {@link
+/// broker_desk_activities} record.
+///
+/// @namespace Crm
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_activity_of_producers {
+  //----
+  // COLUMNS
+  //----
+  /// Primary key of the producer-authorship attribution row.
+  id String @id @db.Uuid
+  
+  /// Reference to the {@link broker_desk_activities} entry being attributed;
+  /// constrained unique so each activity admits at most one
+  /// producer-authorship row.
+  ///
+  /// Joining {@link broker_desk_activities} to this column resolves the
+  /// producing staff member responsible for the timeline entry; absence of a
+  /// match indicates the entry was logged by a CSR recorded in {@link
+  /// broker_desk_activity_of_csrs} instead.
+  broker_desk_activity_id String @db.Uuid
+  
+  /// Reference to the {@link broker_desk_producers} producer who logged the
+  /// activity.
+  ///
+  /// Many entries may share one author, making this a many-to-one
+  /// relationship; it anchors each producer's personal contribution history
+  /// across all client timelines within their brokerage.
+  broker_desk_producer_id String @db.Uuid
+  
+  /// Timestamp recording when this attribution row was written, coinciding
+  /// with the moment the producer filed the interaction onto the client
+  /// timeline.
+  ///
+  /// Combined with the producer reference, it orders an individual producer's
+  /// authorship history chronologically for audit and performance review.
+  created_at DateTime @db.Timestamptz
+  
+  /// Timestamp of the most recent correction applied to the attribution row,
+  /// such as re-pointing the author reference during administrative data
+  /// repair.
+  ///
+  /// Because attribution is append-only, updates are rare corrections rather
+  /// than routine mutations.
+  updated_at DateTime @db.Timestamptz
+  
+  //----
+  // BELONGED RELATIONS,
+  //   - format: (propertyKey targetModel constraint)
+  //----
+  activity broker_desk_activities @relation(fields: [broker_desk_activity_id], references: [id], onDelete: Cascade)
+  producer broker_desk_producers @relation(fields: [broker_desk_producer_id], references: [id], onDelete: Cascade)
+  
+  //----
+  // INDEXES
+  //----
+  @@unique([broker_desk_activity_id])
+  // spellchecker: ignore-next-line
+  @@index([broker_desk_producer_id, created_at], map: "broker_desk_activity_of_producers_broker_desk_producer_922c0dea")
+}
+
+/// CSR authorship attribution binding an interaction-history entry to the
+/// {@link broker_desk_csrs} service representative who logged it.
+///
+/// Each row fixes exactly one {@link broker_desk_activities} record to its
+/// CSR author through a unique activity foreign key, enforcing a strict
+/// one-to-one relationship so a CSR-authored activity carries exactly one
+/// attribution row. Producer-authored entries are recorded separately in
+/// {@link broker_desk_activity_of_producers}; splitting attribution by role
+/// keeps the shared activity table free of multiple nullable author foreign
+/// keys while preserving permanent staff accountability on the client
+/// timeline.
+///
+/// Rows are append-only: once written, the attribution is never mutated and
+/// never soft-deleted, so historical timeline entries remain traceable to
+/// the servicing representative who logged them regardless of later role
+/// changes or deactivation.
+///
+/// @namespace Crm
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_activity_of_csrs {
+  //----
+  // COLUMNS
+  //----
+  /// Primary Key.
+  id String @id @db.Uuid
+  
+  /// Reference to the {@link broker_desk_activities} entry being attributed.
+  ///
+  /// Unique across the table so each CSR-authored activity owns exactly one
+  /// authorship row, making the relationship with the activity strictly
+  /// one-to-one and enabling direct navigation from a timeline entry back to
+  /// its logging representative.
+  broker_desk_activity_id String @db.Uuid
+  
+  /// Reference to the {@link broker_desk_csrs} service representative who
+  /// logged the activity.
+  ///
+  /// Carries the permanent staff attribution used whenever client-timeline
+  /// entries are displayed, filtered by author, or audited for servicing
+  /// history.
+  broker_desk_csr_id String @db.Uuid
+  
+  /// Timestamp recording when this CSR attribution was written, coinciding
+  /// with the creation of the attributed activity.
+  ///
+  /// The row is append-only, so no updated_at or deleted_at exists:
+  /// attribution is permanent and never revised or withdrawn.
+  created_at DateTime @db.Timestamptz
+  
+  //----
+  // BELONGED RELATIONS,
+  //   - format: (propertyKey targetModel constraint)
+  //----
+  activity broker_desk_activities @relation(fields: [broker_desk_activity_id], references: [id], onDelete: Cascade)
+  csr broker_desk_csrs @relation(fields: [broker_desk_csr_id], references: [id], onDelete: Cascade)
+  
+  //----
+  // INDEXES
+  //----
+  @@unique([broker_desk_activity_id])
+  // spellchecker: ignore-next-line
+  @@index([broker_desk_csr_id, broker_desk_activity_id], map: "broker_desk_activity_of_csrs_broker_desk_csr_id_broker_a9bd049b")
+}
+
+/// Assignment record binding a follow-up work item to an administrator
+/// assignee within the brokerage.
+///
+/// Each row of {@link broker_desk_task_of_admins} records that one {@link
+/// broker_desk_admins} administrator is accountable for one {@link
+/// broker_desk_tasks} item. A unique constraint on the task foreign key
+/// enforces the one-row-per-task invariant, so a task can never resolve to
+/// more than one administrator assignment.
+///
+/// The table exists as a separate subtype rather than as nullable columns on
+/// {@link broker_desk_tasks} so that each actor kind (administrator,
+/// producer, customer service representative) owns its own assignment record
+/// with independent referential integrity. When a task moves between
+/// assignees of different kinds, application logic retires this row before
+/// creating the replacement, keeping every assignment snapshot attributable
+/// to exactly one staff role.
+///
+/// @namespace Crm
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_task_of_admins {
+  //----
+  // COLUMNS
+  //----
+  /// Primary Key.
+  id String @id @db.Uuid
+  
+  /// Reference to the assigned follow-up task.
+  ///
+  /// Points at the {@link broker_desk_tasks} row this assignment binds to an
+  /// administrator assignee. The reference is unique, realizing the
+  /// one-row-per-assigned-task invariant stated for this table.
+  broker_desk_task_id String @db.Uuid
+  
+  /// Reference to the administrator assigned to the task.
+  ///
+  /// Identifies the {@link broker_desk_admins} account accountable for
+  /// completing the bound {@link broker_desk_tasks} item. Many assignments may
+  /// reference the same administrator, forming that administrator's
+  /// chronological queue of promised work.
+  broker_desk_admin_id String @db.Uuid
+  
+  /// Timestamp when this assignment was created.
+  ///
+  /// Records the moment the {@link broker_desk_tasks} item was bound to the
+  /// {@link broker_desk_admins} assignee, anchoring the assignment in
+  /// coordination history.
+  created_at DateTime @db.Timestamptz
+  
+  /// Timestamp of the most recent modification to this assignment.
+  ///
+  /// Updated whenever the assignment row changes without changing its
+  /// identity, such as corrections applied during task coordination by agency
+  /// staff.
+  updated_at DateTime @db.Timestamptz
+  
+  //----
+  // BELONGED RELATIONS,
+  //   - format: (propertyKey targetModel constraint)
+  //----
+  task broker_desk_tasks @relation(fields: [broker_desk_task_id], references: [id], onDelete: Cascade)
+  admin broker_desk_admins @relation(fields: [broker_desk_admin_id], references: [id], onDelete: Cascade)
+  
+  //----
+  // INDEXES
+  //----
+  @@unique([broker_desk_task_id])
+  @@index([broker_desk_admin_id, created_at])
+}
+
+/// Assignment record binding a follow-up {@link broker_desk_tasks} item to
+/// the {@link broker_desk_producers} producer responsible for completing it.
+///
+/// One row per producer-assigned task is enforced through a unique task
+/// foreign key, realizing the polymorphic-assignee subtype pattern alongside
+/// {@link broker_desk_task_of_admins} and {@link broker_desk_task_of_csrs}.
+/// This keeps the parent {@link broker_desk_tasks} table free of multiple
+/// nullable actor columns while guaranteeing every task resolves to exactly
+/// one staff assignee across the three role-specific assignment tables.
+///
+/// Reassignment of follow-up work between producers updates the producer
+/// reference in place, preserving the original assignment creation moment;
+/// producers discover their work through this row under the own-book access
+/// boundary, and due-date notifications raised against the task ultimately
+/// attribute back to the producer recorded here.
+///
+/// @namespace Crm
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_task_of_producers {
+  //----
+  // COLUMNS
+  //----
+  /// Primary Key.
+  id String @id @db.Uuid
+  
+  /// Reference to the follow-up task being assigned to a producer.
+  ///
+  /// Points at exactly one {@link broker_desk_tasks} record; the uniqueness of
+  /// this foreign key enforces the one-to-one relationship, ensuring a single
+  /// task can carry at most one producer assignment at any time.
+  broker_desk_task_id String @db.Uuid
+  
+  /// Producer assigned ownership of the task.
+  ///
+  /// Identifies the {@link broker_desk_producers} sales-broker account
+  /// accountable for completing the follow-up work within their book of
+  /// business; the producer's own-book task views join through this reference.
+  broker_desk_producer_id String @db.Uuid
+  
+  /// Timestamp when the task was assigned to the producer.
+  ///
+  /// Records when the producer became the accountable assignee, kept distinct
+  /// from any later reassignment reflected in {@link
+  /// broker_desk_task_of_producers.updated_at}.
+  created_at DateTime @db.Timestamptz
+  
+  /// Timestamp of the most recent modification to this assignment row.
+  ///
+  /// Advances when the assignment changes, such as reassignment to a different
+  /// producer within {@link broker_desk_producers}.
+  updated_at DateTime @db.Timestamptz
+  
+  //----
+  // BELONGED RELATIONS,
+  //   - format: (propertyKey targetModel constraint)
+  //----
+  task broker_desk_tasks @relation(fields: [broker_desk_task_id], references: [id], onDelete: Cascade)
+  producer broker_desk_producers @relation(fields: [broker_desk_producer_id], references: [id], onDelete: Cascade)
+  
+  //----
+  // INDEXES
+  //----
+  @@unique([broker_desk_task_id])
+  // spellchecker: ignore-next-line
+  @@index([broker_desk_producer_id, broker_desk_task_id], map: "broker_desk_task_of_producers_broker_desk_producer_id__64f3a63a")
+}
+
+/// Assignment row binding a follow-up {@link broker_desk_tasks} record to
+/// the {@link broker_desk_csrs} customer service representative responsible
+/// for completing it.
+///
+/// The table implements the polymorphic assignee subtype pattern: the base
+/// {@link broker_desk_tasks} table keeps shared work-item data free of
+/// nullable actor foreign keys, while this sibling stores the CSR-specific
+/// half of the relationship. Exactly one row may exist per CSR-assigned
+/// task, enforced by a unique constraint on the task foreign key.
+///
+/// Reassignment replaces the representative reference on the same row rather
+/// than duplicating history, so the pair of timestamps distinguishes when
+/// work was first delegated from when it last changed hands. Together with
+/// {@link broker_desk_task_of_admins} and {@link
+/// broker_desk_task_of_producers}, the three assignment tables cover every
+/// internal staff role capable of holding a follow-up task.
+///
+/// @namespace Crm
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_task_of_csrs {
+  //----
+  // COLUMNS
+  //----
+  /// Primary Key.
+  id String @id @db.Uuid
+  
+  /// Reference to the assigned follow-up task.
+  ///
+  /// Identifies the {@link broker_desk_tasks} work item whose completion is
+  /// delegated to the paired customer service representative. The unique
+  /// constraint on this column guarantees that a task carries at most one CSR
+  /// assignment row, keeping the base task table free of nullable assignee
+  /// foreign keys while remaining joinable back to the shared task record.
+  broker_desk_task_id String @db.Uuid
+  
+  /// Reference to the customer service representative assigned to the task.
+  ///
+  /// Points at the {@link broker_desk_csrs} account that owns execution of the
+  /// paired task. A representative may hold assignments for many different
+  /// tasks, while every assignment row names exactly one representative,
+  /// giving CSRs a direct reverse collection for building their personal
+  /// workload and due-date views.
+  broker_desk_csr_id String @db.Uuid
+  
+  /// Timestamp recording when the task was assigned to the customer service
+  /// representative.
+  ///
+  /// Set automatically when the assignment row is created and never modified
+  /// afterwards, preserving the original delegation moment even if the task is
+  /// later handed to a different representative.
+  created_at DateTime @db.Timestamptz
+  
+  /// Timestamp of the most recent change to the assignment row.
+  ///
+  /// Refreshed whenever the row mutates, most commonly when a task is
+  /// reassigned to a different {@link broker_desk_csrs} representative,
+  /// letting reviewers distinguish the initial delegation date from later
+  /// hand-offs.
+  updated_at DateTime @db.Timestamptz
+  
+  //----
+  // BELONGED RELATIONS,
+  //   - format: (propertyKey targetModel constraint)
+  //----
+  task broker_desk_tasks @relation(fields: [broker_desk_task_id], references: [id], onDelete: Cascade)
+  csr broker_desk_csrs @relation(fields: [broker_desk_csr_id], references: [id], onDelete: Cascade)
+  
+  //----
+  // INDEXES
+  //----
+  @@unique([broker_desk_task_id])
+  // spellchecker: ignore-next-line
+  @@index([broker_desk_csr_id, broker_desk_task_id], map: "broker_desk_task_of_csrs_broker_desk_csr_id_broker_des_5457f54d")
+}

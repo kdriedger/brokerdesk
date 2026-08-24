@@ -18,7 +18,7 @@ subgraph "Backend Coding Agent"
 end
 subgraph "Functional Agents"
   coder --"Requirements Analysis"--> analyze("✅ Analyze")
-  coder --"ERD"--> database("⬜ Database")
+  coder --"ERD"--> database("✅ Database")
   coder --"API Design"--> interface("⬜ Interface")
   coder --"Test Codes" --> test("⬜ Test")
   coder --"Main Program" --> realize("⬜ Realize")
@@ -42,7 +42,7 @@ Waterfall Model | AutoBe Agent | Result
 ----------------|--------------|----------------------------------------------
 Requirements    | ✅ Facade       | Conversation History
 Analysis        | ✅ Analyze      | [Requirement Analysis Report](docs/analysis)
-Design          | ⬜ Prisma       | [Entity Relationship Diagram](docs/ERD.md) / [Prisma Schema](prisma/schema)
+Design          | ✅ Prisma       | [Entity Relationship Diagram](docs/ERD.md) / [Prisma Schema](prisma/schema)
 Design          | ⬜ Interface    | [API Controllers](src/controllers) / [DTO Structures](src/api/structures)
 Development     | ⬜ Realize      | [API Provider Functions](src/providers)
 Testing         | ⬜ Test         | [E2E Test Functions](test/features/api)
@@ -114,7 +114,7 @@ When you've created a new backend project through this template project, you can
 Phase | Generated | FCSR | Token Consumption | Elapsed Time
 ------|-----------|------|-------------------|--------------
 ✅ analyze | actors: 5, documents: 6 | 53.16 % | 13,492,729 | 34070 sec
-⬜ database | | | | 
+✅ database | namespaces: 8, models: 71 | 42.37 % | 18,831,251 | 9632 sec
 ⬜ interface | | | | 
 ⬜ test | | | | 
 ⬜ realize | | | | 
@@ -133,11 +133,15 @@ These aggregate metrics provide visibility into the computational cost and time 
 
 Type | Trial | Validation Failure | JSON Parse Error | Success | Success Rate
 :----|------:|-------------------:|-----------------:|---------:|-------------:
-total | 760 | 356 | 0 | 404 | 53.16 %
+total | 1,291 | 661 | 0 | 629 | 48.72 %
 analyzeScenario | 6 | 4 | 0 | 2 | 33.33 %
 analyzeWriteUnit | 12 | 0 | 0 | 12 | 100.00 %
 analyzeWriteSection | 737 | 352 | 0 | 385 | 52.24 %
 analyzeSectionReview | 5 | 0 | 0 | 5 | 100.00 %
+databaseGroup | 4 | 0 | 0 | 4 | 100.00 %
+databaseAuthorization | 4 | 1 | 0 | 3 | 75.00 %
+databaseComponent | 23 | 8 | 0 | 15 | 65.22 %
+databaseSchema | 500 | 296 | 0 | 203 | 40.60 %
 
 This table shows the reliability and quality metrics for AI agent function calling operations across all phases. Each row represents a specific operation type (e.g., `analyzeScenario`, `prismaSchema`, `realizeWrite`), tracking:
 

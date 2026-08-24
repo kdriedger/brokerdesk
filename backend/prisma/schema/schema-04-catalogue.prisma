@@ -1,0 +1,492 @@
+/// Catalogue entries for insurance carriers an independent brokerage may
+/// transact with, forming the shared reference data consumed read-only by
+/// quoting, policy, and billing workflows.
+///
+/// Each row carries the carrier's display name plus a unique short code used
+/// for compact system-wide identification, together with an optional
+/// financial-strength note preserving ratings such as AM Best assessments so
+/// advisors can weigh carrier solvency during selection. Producer-support
+/// contact channels — a service email and phone — and the corporate website
+/// expose the carrier's communication endpoints, while free-form notes hold
+/// unstructured internal observations maintained by administrators under
+/// their catalogue-governance mandate.
+///
+/// Lifecycle is governed exclusively by the active flag: deactivating a
+/// carrier removes it from future product and quote-line selection without
+/// deleting the row, so historical {@link broker_desk_quote_lines}, {@link
+/// broker_desk_submissions}, {@link broker_desk_policies}, and {@link
+/// broker_desk_commissions} records keep their carrier references intact for
+/// audit continuity. Transaction rights between a brokerage and a carrier
+/// are expressed separately through {@link
+/// broker_desk_carrier_appointments}, which track appointment status and
+/// expiry as the compliance-alert source; {@link broker_desk_products}
+/// offered by the carrier likewise remain selectable only while this flag is
+/// true.
+///
+/// @namespace Catalogue
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_carriers {
+  //----
+  // COLUMNS
+  //----
+  /// Primary Key.
+  id String @id @db.Uuid
+  
+  /// Official display name of the insurance carrier as presented across
+  /// catalogue listings, appointment records, and generated client-facing
+  /// paperwork.
+  name String
+  
+  /// Unique short reference code identifying the carrier throughout the
+  /// system, kept stable even when the display name changes so downstream
+  /// snapshots and exports stay reconcilable.
+  code String
+  
+  /// Optional free-text financial-strength observation such as an AM Best
+  /// rating or solvency commentary, surfaced to advisors when comparing
+  /// carriers during quoting.
+  financial_strength_note String?
+  
+  /// Corporate website URL for the carrier, giving staff a quick pointer to
+  /// public product and claims information.
+  website String? @db.VarChar(80000)
+  
+  /// Service email address through which brokerage staff reach the carrier's
+  /// producer-support desk for submissions and servicing questions.
+  service_email String?
+  
+  /// Service phone number for the carrier's producer-support desk,
+  /// complementing {@link service_email} for urgent verbal follow-ups.
+  service_phone String?
+  
+  /// Free-form administrative notes recording internal observations about the
+  /// carrier, such as negotiation history or servicing quirks; never exposed
+  /// to clients.
+  notes String?
+  
+  /// Selectability flag: true allows the carrier to appear in new product,
+  /// quote-line, and submission selections, while false hides it from future
+  /// choices yet preserves every historical reference pointing at the row.
+  active Boolean
+  
+  /// Timestamp when the carrier was added to the catalogue.
+  created_at DateTime @db.Timestamptz
+  
+  /// Timestamp of the most recent modification to any carrier attribute.
+  updated_at DateTime @db.Timestamptz
+  
+  //----
+  // HAS RELATIONS
+  //   - format: (propertyKey targetModel)
+  //----
+  appointments broker_desk_carrier_appointments[]
+  products broker_desk_products[]
+  submissions broker_desk_submissions[]
+  policies broker_desk_policies[]
+  commissions broker_desk_commissions[]
+  
+  //----
+  // INDEXES
+  //----
+  @@unique([code])
+  @@index([active, created_at])
+  @@index([name(ops: raw("gin_trgm_ops"))], type: Gin)
+}
+
+/// Junction record appointing an insurance carrier to a brokerage
+/// organization, carrying the appointment status and expiry date that serve
+/// as the compliance-alert source for upcoming or lapsed appointments.
+///
+/// Each row binds exactly one {@link broker_desk_organizations} tenant to
+/// one {@link broker_desk_carriers} catalogue entry, expressing that the
+/// brokerage holds authority to place business with that carrier during the
+/// recorded term. The compound unique constraint guarantees a single live
+/// appointment record per organization-carrier pair, while soft deletion
+/// preserves historical appointment trails for audit.
+///
+/// Administrators govern this record directly: creating appointments when a
+/// carrier relationship begins, updating status and pushing expires_at
+/// forward on renewal, and reviewing the whole book on compliance dashboards
+/// regardless of which carrier is selected. The expires_at column feeds
+/// scheduled scans that raise {@link broker_desk_notifications} before
+/// placement authority lapses and flag lapped appointments so the carrier
+/// leaves future quoting selection while historical quote lines,
+/// submissions, policies, and commissions keep their carrier references
+/// intact.
+///
+/// @namespace Catalogue
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_carrier_appointments {
+  //----
+  // COLUMNS
+  //----
+  /// Primary key identifying the carrier appointment record.
+  id String @id @db.Uuid
+  
+  /// Reference to the brokerage organization holding the carrier appointment.
+  ///
+  /// Every appointment belongs to exactly one {@link
+  /// broker_desk_organizations} tenant, enforcing multi-tenancy so appointment
+  /// records never leak across brokerages.
+  broker_desk_organization_id String @db.Uuid
+  
+  /// Reference to the appointed insurance carrier from the shared catalogue.
+  ///
+  /// Links the appointment to exactly one {@link broker_desk_carriers} entry
+  /// whose products become selectable for this organization's quotes while the
+  /// appointment remains active and unexpired.
+  broker_desk_carrier_id String @db.Uuid
+  
+  /// Current lifecycle state of the appointment, distinguishing awaiting,
+  /// active, expired, and terminated standing.
+  ///
+  /// Drives selectability of the carrier's products during quoting and feeds
+  /// compliance dashboards separating authorized placements from lapsed
+  /// relationships.
+  status String
+  
+  /// Date the carrier granted or most recently renewed the appointment,
+  /// marking the start of the current appointment term.
+  ///
+  /// Together with expires_at it expresses the appointment window
+  /// administrators review during carrier governance and renewal.
+  appointed_at DateTime @db.Timestamptz
+  
+  /// Expiry date of the carrier appointment, the primary trigger for
+  /// upcoming-expiry and lapsed-appointment compliance alerts.
+  ///
+  /// Scheduled compliance scans compare this value against the current date to
+  /// raise administrator notifications before placing authority lapses.
+  expires_at DateTime @db.Timestamptz
+  
+  /// Timestamp when the appointment record was created.
+  created_at DateTime @db.Timestamptz
+  
+  /// Timestamp when the appointment record was last modified, such as a status
+  /// change or a renewal pushing the expiry forward.
+  updated_at DateTime @db.Timestamptz
+  
+  /// Soft-delete timestamp preserving terminated appointment history while
+  /// excluding the row from live uniqueness enforcement and future product
+  /// selection.
+  deleted_at DateTime? @db.Timestamptz
+  
+  //----
+  // BELONGED RELATIONS,
+  //   - format: (propertyKey targetModel constraint)
+  //----
+  // spellchecker: ignore-next-line
+  organization broker_desk_organizations @relation(fields: [broker_desk_organization_id], references: [id], onDelete: Cascade, map: "broker_desk_carrier_appointments_broker_desk_organizat_24e59c90")
+  carrier broker_desk_carriers @relation(fields: [broker_desk_carrier_id], references: [id], onDelete: Cascade)
+  
+  //----
+  // INDEXES
+  //----
+  @@index([broker_desk_carrier_id])
+  // spellchecker: ignore-next-line
+  @@unique([broker_desk_organization_id, broker_desk_carrier_id], map: "broker_desk_carrier_appointments_broker_desk_organizat_d609b08b")
+  // spellchecker: ignore-next-line
+  @@index([broker_desk_organization_id, expires_at], map: "broker_desk_carrier_appointments_broker_desk_organizat_629737b2")
+}
+
+/// Insurance products offered by a carrier, forming the admin-governed
+/// product catalogue from which comparative quotes, submissions, policies,
+/// and commissions are built.
+///
+/// Each {@link broker_desk_products} row belongs to exactly one {@link
+/// broker_desk_carriers} record and carries the display name plus reference
+/// code staff use when assembling quote lines, together with a fixed
+/// line-of-business classification (auto | home | commercial_property |
+/// commercial_liability | life | health | disability | travel | other) that
+/// never changes after creation.
+///
+/// Two free-shape JSON documents automate quoting: eligibility_rules
+/// captures validation constraints such as allowed provinces, client types,
+/// and min/max value ranges enforced by the server when attaching the
+/// product to a quote, while rating_schema enumerates the coverage options,
+/// limits, deductibles, and risk questions a producer must supply when
+/// pricing against the product. Both documents vary freely per carrier
+/// product and are therefore stored as requested JSON columns rather than
+/// normalized child rows.
+///
+/// Deactivating a product through its active flag removes it from future
+/// selection while historical quote lines, submissions, policies, and
+/// commissions retain their references.
+///
+/// @namespace Catalogue
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_products {
+  //----
+  // COLUMNS
+  //----
+  /// Primary Key.
+  id String @id @db.Uuid
+  
+  /// Carrier offering this product.
+  ///
+  /// Every product belongs to exactly one {@link broker_desk_carriers} record;
+  /// the relationship is mandatory because a product cannot exist outside a
+  /// carrier's offering. Historical references are preserved even when the
+  /// carrier or product is later deactivated.
+  broker_desk_carrier_id String @db.Uuid
+  
+  /// Display name of the product shown throughout the catalogue, on
+  /// comparative quote lines, and on rendered policy documents.
+  name String
+  
+  /// Short reference code identifying this product within its carrier, used in
+  /// listings, exports, and cross-references from quote lines and policies.
+  code String
+  
+  /// Fixed line-of-business classification of the product; one of auto | home
+  /// | commercial_property | commercial_liability | life | health | disability
+  /// | travel | other. The classification never changes after creation because
+  /// downstream quoting and policy records depend on it.
+  line_of_business String
+  
+  /// Optional marketing and underwriting description of the product displayed
+  /// to staff when selecting coverage options.
+  description String?
+  
+  /// Selectability flag: true while the product may be attached to new quotes;
+  /// deactivation removes future selection while historical quote lines,
+  /// submissions, policies, and commissions keep their references.
+  active Boolean
+  
+  /// Eligibility-rules JSON describing constraints validated server-side when
+  /// attaching the product to a quote, such as allowed provinces, permitted
+  /// client types, and min/max insurable values. Stored as requested
+  /// free-shape JSON because rule shapes vary per carrier product.
+  eligibility_rules String?
+  
+  /// Rating-schema JSON enumerating the required quoting inputs for this
+  /// product - coverage options, limits, deductibles, and risk questions -
+  /// which quote-line rating inputs must conform to. Stored as requested
+  /// free-shape JSON because schema shapes vary per carrier product.
+  rating_schema String?
+  
+  /// Timestamp when the product record was created.
+  created_at DateTime @db.Timestamptz
+  
+  /// Timestamp when the product record was last modified.
+  updated_at DateTime @db.Timestamptz
+  
+  /// Soft-delete timestamp; null while the product remains part of the live
+  /// catalogue.
+  deleted_at DateTime? @db.Timestamptz
+  
+  //----
+  // BELONGED RELATIONS,
+  //   - format: (propertyKey targetModel constraint)
+  //----
+  carrier broker_desk_carriers @relation(fields: [broker_desk_carrier_id], references: [id], onDelete: Cascade)
+  
+  //----
+  // HAS RELATIONS
+  //   - format: (propertyKey targetModel)
+  //----
+  coverageItems broker_desk_coverage_items[]
+  commissionSchedule broker_desk_commission_schedules?
+  quoteLines broker_desk_quote_lines[]
+  policies broker_desk_policies[]
+  
+  //----
+  // INDEXES
+  //----
+  @@unique([broker_desk_carrier_id, code])
+  @@index([line_of_business, active])
+  @@index([name(ops: raw("gin_trgm_ops"))], type: Gin)
+}
+
+/// Coverage catalog items belonging to a {@link broker_desk_products
+/// product}, defining the reusable coverage vocabulary that quote lines and
+/// {@link broker_desk_policy_coverages policy coverage schedules} inherit.
+///
+/// Each record represents one selectable coverage option — such as
+/// collision, comprehensive, or commercial general liability — offered under
+/// a single product. Administrators maintain these entries as part of
+/// product governance: the catalogue name supplies client-facing wording,
+/// the code provides a stable reference used during quoting and issuance,
+/// the default limit pre-fills the CAD coverage amount, and the optional
+/// marker indicates whether a client may exclude the coverage from a
+/// selection.
+///
+/// Downstream consumers snapshot these values rather than live-reference
+/// them: quote lines copy name, code, and limit at pricing time, and policy
+/// coverage schedules mirror them at issuance, so edits or retirement of a
+/// catalogue entry affect only future selections while issued records remain
+/// unchanged.
+///
+/// @namespace Catalogue
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_coverage_items {
+  //----
+  // COLUMNS
+  //----
+  /// Primary Key.
+  id String @id @db.Uuid
+  
+  /// Reference to the {@link broker_desk_products product} offering this
+  /// coverage item.
+  ///
+  /// Every coverage item belongs to exactly one product and is managed
+  /// exclusively through its parent product's administration surface.
+  /// Deactivating or removing a product ends future catalogue selection while
+  /// historical quote lines and policy coverage schedules retain their own
+  /// frozen copies of the inherited values.
+  broker_desk_product_id String @db.Uuid
+  
+  /// Client-facing catalogue name of the coverage item, such as "Collision" or
+  /// "Commercial General Liability".
+  ///
+  /// This wording is inherited by quote lines when building comparative
+  /// options and by policy coverage schedules when rendering certificates and
+  /// policy schedule documents.
+  name String
+  
+  /// Stable reference code identifying the coverage within its parent product.
+  ///
+  /// Uniqueness is enforced per product so codes stay short and readable;
+  /// downstream quote lines and policy coverage schedules use this code to
+  /// trace which catalogue entry a copied coverage value originated from.
+  code String
+  
+  /// Default coverage limit in CAD pre-filled whenever this coverage item is
+  /// attached to a quote line or policy coverage schedule.
+  ///
+  /// A value of zero denotes coverage with no monetary limit; the stored
+  /// figure is a catalogue default only, since issuers may override limits per
+  /// quote and policy.
+  default_limit Float @db.DoublePrecision
+  
+  /// Whether the coverage may be excluded from a client's selection.
+  ///
+  /// When true, producers and CSRs may omit the coverage while assembling
+  /// comparative quote lines; mandatory coverages (false) must always appear
+  /// on derived quotes and policies.
+  is_optional Boolean
+  
+  /// Timestamp when the coverage catalogue entry was created.
+  created_at DateTime @db.Timestamptz
+  
+  /// Timestamp of the most recent modification to the catalogue entry.
+  updated_at DateTime @db.Timestamptz
+  
+  /// Soft-deletion timestamp; null while the catalogue entry remains active
+  /// and selectable for new quotes and policies.
+  deleted_at DateTime? @db.Timestamptz
+  
+  //----
+  // BELONGED RELATIONS,
+  //   - format: (propertyKey targetModel constraint)
+  //----
+  product broker_desk_products @relation(fields: [broker_desk_product_id], references: [id], onDelete: Cascade)
+  
+  //----
+  // INDEXES
+  //----
+  @@unique([broker_desk_product_id, code])
+}
+
+/// Default commission configuration attached to exactly one {@link
+/// broker_desk_products} entry, defining the agency commission rate,
+/// producer split, and optional volume-tier structure used to seed estimated
+/// commissions whenever the product enters a quote line or generates a
+/// policy commission.
+///
+/// Governance. Administrators own this catalogue data as part of product
+/// governance; producers and CSRs consume it read-only through downstream
+/// workflows such as {@link broker_desk_quote_lines} commission estimates
+/// and {@link broker_desk_commissions}. The unique foreign key enforces a
+/// strict 1:1 relationship — each product carries at most one default
+/// schedule, mirroring the catalogue rule that a product has one
+/// CommissionSchedule.
+///
+/// Compensation semantics. {@link agency_rate_percent} sets the brokerage
+/// commission as a decimal percentage of the premium basis, and {@link
+/// producer_split_percent} sets the share of that agency commission
+/// attributed to the producing staff member. Downstream quote lines and
+/// commissions persist these seeded figures as independent snapshots, so
+/// later revisions to this schedule never retroactively restate historical
+/// estimates.
+///
+/// Volume tiers. {@link tier_table_json} optionally encodes a graduated tier
+/// table as JSON — an explicitly requested JSON column mapping volume or
+/// premium breakpoints to adjusted rates; null applies the flat default
+/// rates uniformly across all volume levels.
+///
+/// Lifecycle. created_at and updated_at track administrator revisions of the
+/// configuration, while nullable deleted_at supports retiring a schedule
+/// softly so historical commission lineage remains fully traceable.
+///
+/// @namespace Catalogue
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_commission_schedules {
+  //----
+  // COLUMNS
+  //----
+  /// Primary key uniquely identifying each product's default commission
+  /// configuration record.
+  id String @id @db.Uuid
+  
+  /// Reference to the {@link broker_desk_products} row whose default
+  /// commission economics this schedule configures.
+  ///
+  /// Enforced unique, making the relationship strictly 1:1: every product
+  /// carries at most one commission schedule, and every schedule always
+  /// belongs to exactly one product. The child-to-parent direction keeps
+  /// product governance authoritative — deactivating a product removes future
+  /// selection while this configuration simply follows the product lifecycle.
+  broker_desk_product_id String @db.Uuid
+  
+  /// Default agency commission rate expressed as a decimal percentage of the
+  /// premium basis (for example 12.5 meaning 12.5%).
+  ///
+  /// Seeds the agency-side commission estimate persisted on {@link
+  /// broker_desk_quote_lines} and {@link broker_desk_commissions}; subsequent
+  /// edits to this value never retroactively restate previously seeded
+  /// estimates.
+  agency_rate_percent Float @db.DoublePrecision
+  
+  /// Default share of the agency commission attributed to the individual
+  /// producing staff member, expressed as a decimal percentage (for example 50
+  /// meaning 50%).
+  ///
+  /// Combined with {@link agency_rate_percent}, it determines the producer
+  /// amount seeded onto commission records attributed to the producing member.
+  producer_split_percent Float @db.DoublePrecision
+  
+  /// Optional volume-tier table serialized as JSON, mapping premium or volume
+  /// breakpoints to adjusted commission rates for graduated compensation
+  /// structures.
+  ///
+  /// Stored as a JSON column by explicit system requirement; null indicates
+  /// that the flat {@link agency_rate_percent} and {@link
+  /// producer_split_percent} defaults apply uniformly across all volume
+  /// levels.
+  tier_table_json String?
+  
+  /// Timestamp recording when administrators created this default commission
+  /// configuration for the product.
+  created_at DateTime @db.Timestamptz
+  
+  /// Timestamp recording the most recent revision of the commission
+  /// configuration, refreshed whenever rates or the tier table change.
+  updated_at DateTime @db.Timestamptz
+  
+  /// Soft-delete timestamp marking retirement of the configuration while
+  /// preserving historical estimate and commission lineage; null while the
+  /// schedule remains in force.
+  deleted_at DateTime? @db.Timestamptz
+  
+  //----
+  // BELONGED RELATIONS,
+  //   - format: (propertyKey targetModel constraint)
+  //----
+  product broker_desk_products @relation(fields: [broker_desk_product_id], references: [id], onDelete: Cascade)
+  
+  //----
+  // INDEXES
+  //----
+  @@unique([broker_desk_product_id])
+}

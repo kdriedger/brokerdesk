@@ -1,0 +1,1842 @@
+/// Anchor identity record for an unauthenticated visitor initiating one of
+/// BrokerDesk's public entry points before any credentialed identity exists.
+///
+/// Every request that arrives without proven identity belongs to a guest: a
+/// person holding no role among admin, producer, csr, and client and no
+/// standing within any {@link broker_desk_organizations brokerage}. The
+/// guest is the default condition of anonymous traffic on the permitted
+/// doors — first-administrator registration, sign-in, password-reset
+/// request, email verification, and token refresh — and this record exists
+/// solely so those flows can be attributed to a stable identifier while the
+/// identity gate continues revealing nothing about which brokerages exist.
+///
+/// By design the record stores no email address, password hash, token, or
+/// any other credential-bearing attribute, and it holds no foreign keys: a
+/// guest has no organization membership, tenant isolation cannot apply until
+/// identity is proven, and a role is received only through successful
+/// conversion to admin, producer, csr, or client — never negotiated at the
+/// gate. Device context such as IP address, href, and referrer lives on
+/// {@link broker_desk_guest_sessions}, which references this anchor rather
+/// than duplicating concerns here. Rows are transient by nature: once their
+/// associated public flows conclude they carry no further business meaning,
+/// so stale records are garbage-collected rather than soft-deleted.
+///
+/// @namespace Actors
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_guests {
+  //----
+  // COLUMNS
+  //----
+  /// Primary Key.
+  id String @id @db.Uuid
+  
+  /// Moment the anonymous visitor first initiated a public flow such as
+  /// first-administrator registration, sign-in, token refresh, or a
+  /// password-reset or email-verification request.
+  ///
+  /// Serves as the basis for time-windowed purge jobs removing stale anonymous
+  /// anchors and for abuse analysis over public-flow traffic.
+  created_at DateTime @db.Timestamptz
+  
+  /// Moment this guest record was last touched by any public-flow activity
+  /// attributed to the same anonymous visitor.
+  ///
+  /// Supports staleness detection when garbage-collecting abandoned anchors
+  /// whose associated flows never completed.
+  updated_at DateTime @db.Timestamptz
+  
+  //----
+  // HAS RELATIONS
+  //   - format: (propertyKey targetModel)
+  //----
+  sessions broker_desk_guest_sessions[]
+  
+  //----
+  // INDEXES
+  //----
+  @@index([created_at])
+}
+
+/// Anonymous visitor sessions issued before any credentialed identity
+/// exists, tracking each unauthenticated person's device context while they
+/// traverse BrokerDesk's public entry points such as first-administrator
+/// registration, sign-in, password-reset requests, and email verification.
+///
+/// Every record belongs to exactly one {@link broker_desk_guests} identity
+/// and captures the network origin (ip), entry URL (href), and referrer
+/// header of the initiating request, forming the transient pre-login state
+/// described by the guest access boundary. Sessions carry no credentials
+/// themselves; they exist only so public flows can correlate successive
+/// steps of one anonymous visit.
+///
+/// Rows are short-lived runtime machinery: expired_at is mandatory, and once
+/// it passes the anonymous token can no longer be exchanged, forcing the
+/// visitor back through the identity gate. Records are append-only artifacts
+/// written once at issuance and never mutated by business operations.
+///
+/// @namespace Actors
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_guest_sessions {
+  //----
+  // COLUMNS
+  //----
+  /// Primary key identifying the anonymous guest session row.
+  id String @id @db.Uuid
+  
+  /// Reference to the anonymous {@link broker_desk_guests} identity that owns
+  /// this session.
+  ///
+  /// One guest may hold several concurrent anonymous sessions (one per
+  /// public-flow attempt), making this an ordinary one-to-many reference
+  /// rather than a unique link. The binding is permanent: a session never
+  /// migrates between guests.
+  broker_desk_guest_id String @db.Uuid
+  
+  /// IP address the anonymous visitor presented when the session was created.
+  ///
+  /// Part of the device-context trail used for security review of
+  /// unauthenticated traffic; kept as text so both IPv4 and IPv6 forms survive
+  /// without lossy conversion.
+  ip String
+  
+  /// Page URL at which the anonymous session was initiated.
+  ///
+  /// Records which public entry point (registration, login, token refresh,
+  /// password reset, email verification) spawned the session so anomalous
+  /// origins can be audited later.
+  href String
+  
+  /// Referrer header value supplied by the visitor's client application when
+  /// the session began.
+  ///
+  /// Completes the device context alongside ip and href, describing where the
+  /// unauthenticated traffic came from without revealing whether any brokerage
+  /// or account exists.
+  referrer String
+  
+  /// Timestamp at which the anonymous session was issued.
+  ///
+  /// Anchors the chronological ordering of a guest's public-flow activity and
+  /// serves as the sort column of the per-guest session-history index.
+  created_at DateTime @db.Timestamptz
+  
+  /// Mandatory expiry moment after which the anonymous token becomes unusable.
+  ///
+  /// Guest sessions are deliberately short-lived; once this deadline passes
+  /// the visitor must restart the public flow from scratch. Never null,
+  /// because an open-ended anonymous session would violate the default-denial
+  /// posture enforced at the identity gate.
+  expired_at DateTime @db.Timestamptz
+  
+  //----
+  // BELONGED RELATIONS,
+  //   - format: (propertyKey targetModel constraint)
+  //----
+  guest broker_desk_guests @relation(fields: [broker_desk_guest_id], references: [id], onDelete: Cascade)
+  
+  //----
+  // INDEXES
+  //----
+  @@index([broker_desk_guest_id, created_at])
+}
+
+/// Brokerage administrator account holding sign-in credentials and
+/// organization membership for the highest-authority staff actor of a
+/// brokerage tenant.
+///
+/// An administrator governs exactly one {@link broker_desk_organizations}
+/// tenant: managing the organization profile, inviting and administering
+/// staff accounts and their roles, stewarding the carrier roster and product
+/// catalogue, owning document templates and commission schedules, overseeing
+/// reports, and reviewing the append-only audit trail. The very first
+/// administrator is created through public guest registration in the same
+/// transaction that creates the new organization, while every subsequent
+/// administrator is provisioned by invitation from an existing administrator
+/// rather than by self-registration.
+///
+/// Each record carries a globally unique email used as the sign-in
+/// identifier together with a salted password hash, a human-readable display
+/// name shown across the workspace, and an active flag that gates
+/// authentication - deactivating an administrator immediately blocks fresh
+/// token issuance while preserving the row for historical references and
+/// audit attribution instead of physically deleting it.
+///
+/// Runtime authentication artifacts live in sibling tables owned by the
+/// authorization flow ({@link broker_desk_admin_sessions}, {@link
+/// broker_desk_admin_password_resets}, {@link
+/// broker_desk_admin_email_verifications}), and security-relevant account
+/// events such as activations, role changes, and password changes are
+/// recorded in {@link broker_desk_admin_audit_logs}.
+///
+/// @namespace Actors
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_admins {
+  //----
+  // COLUMNS
+  //----
+  /// Primary key of the administrator account.
+  id String @id @db.Uuid
+  
+  /// Brokerage tenant this administrator belongs to.
+  ///
+  /// Every administrator operates within exactly one {@link
+  /// broker_desk_organizations} record, and all permission checks and queries
+  /// are scoped through this membership for multi-tenant isolation. The
+  /// reference is never null because even the founding administrator is
+  /// inserted in the same transaction that registers the organization.
+  broker_desk_organization_id String @db.Uuid
+  
+  /// Sign-in email address identifying the administrator.
+  ///
+  /// Serves as the credential identifier during login, password recovery, and
+  /// email verification, and is the address to which invitations, reset links,
+  /// and verification messages are delivered. Uniqueness is enforced
+  /// platform-wide so any given email resolves to at most one account.
+  email String
+  
+  /// Salted hash of the administrator's password credential.
+  ///
+  /// Only the irreversible hash is stored, never the plaintext; it is verified
+  /// at sign-in and replaced whenever the administrator changes the password
+  /// or completes a reset flow.
+  password_hash String
+  
+  /// Human-readable display name shown throughout the workspace.
+  ///
+  /// Appears in staff directories, assignment attributions, and {@link
+  /// broker_desk_audit_logs} entries identifying who acted, kept distinct from
+  /// the email so the visible label can change without altering the
+  /// credential.
+  display_name String
+  
+  /// Activation flag gating whether the administrator may authenticate.
+  ///
+  /// Deactivation performed by another administrator immediately prevents new
+  /// session issuance while preserving the account for historical references;
+  /// reactivation restores access without recreating the record.
+  active Boolean
+  
+  /// Timestamp when the administrator account was created.
+  ///
+  /// Set once at registration or invitation acceptance and never modified
+  /// afterwards.
+  created_at DateTime @db.Timestamptz
+  
+  /// Timestamp of the most recent modification to the account.
+  ///
+  /// Refreshed whenever profile details, credentials, or the active flag
+  /// change.
+  updated_at DateTime @db.Timestamptz
+  
+  /// Soft-delete timestamp marking administrative removal of the account.
+  ///
+  /// Null while the account remains part of the tenant roster; a non-null
+  /// value hides the account from listings while retaining it for audit
+  /// traceability.
+  deleted_at DateTime? @db.Timestamptz
+  
+  //----
+  // BELONGED RELATIONS,
+  //   - format: (propertyKey targetModel constraint)
+  //----
+  organization broker_desk_organizations @relation(fields: [broker_desk_organization_id], references: [id], onDelete: Cascade)
+  
+  //----
+  // HAS RELATIONS
+  //   - format: (propertyKey targetModel)
+  //----
+  sessions broker_desk_admin_sessions[]
+  passwordResets broker_desk_admin_password_resets[] @relation("broker_desk_admin_password_resets_of_broker_desk_admin_id")
+  triggeredPasswordResets broker_desk_admin_password_resets[] @relation("broker_desk_admin_password_resets_of_requested_by_admin_id")
+  emailVerifications broker_desk_admin_email_verifications[]
+  auditLogs broker_desk_admin_audit_logs[] @relation("broker_desk_admin_audit_logs_of_broker_desk_admin_id")
+  targetAuditLogs broker_desk_admin_audit_logs[] @relation("broker_desk_admin_audit_logs_of_target_broker_desk_admin_id")
+  auditLogAttributions broker_desk_audit_log_of_admins[]
+  taskAssignments broker_desk_task_of_admins[]
+  submissionMessageAttributions broker_desk_submission_message_of_admins[]
+  authoredDocumentTemplates broker_desk_document_templates[]
+  documentVersionOfAdmins broker_desk_document_version_of_admins[]
+  
+  //----
+  // INDEXES
+  //----
+  @@unique([email])
+  @@index([broker_desk_organization_id, active])
+}
+
+/// JWT authentication session record for a {@link broker_desk_admins
+/// brokerage administrator}, issuing short-lived access tokens paired with
+/// longer-lived refresh tokens.
+///
+/// Each row represents exactly one sign-in from one device or browser
+/// context and captures request-origin metadata (IP address, entry href,
+/// referrer) so that every issued token can be traced back to how and from
+/// where it was obtained. Token renewal reads the administrator's current
+/// role and activation status at refresh time, guaranteeing that renewed
+/// credentials reflect present account state rather than the state at
+/// original issuance.
+///
+/// Logout invalidates the session by terminating its validity ahead of
+/// schedule, and deactivating an administrator force-terminates all of that
+/// administrator's open sessions in bulk as an account-security measure.
+/// Rows form an append-only security audit trail: once written they are
+/// never edited, only terminated.
+///
+/// @namespace Actors
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_admin_sessions {
+  //----
+  // COLUMNS
+  //----
+  /// Primary Key.
+  id String @id @db.Uuid
+  
+  /// Reference to the authenticated {@link broker_desk_admins} administrator
+  /// who owns this session.
+  ///
+  /// Every session is bound to exactly one administrator within one brokerage
+  /// organization; all permission checks during access-token and refresh-token
+  /// validation resolve through this relationship, so a terminated or
+  /// deactivated administrator immediately loses effective access even if
+  /// previously issued tokens remain cryptographically valid.
+  broker_desk_admin_id String @db.Uuid
+  
+  /// Client IP address from which the session was established.
+  ///
+  /// Used for security auditing, anomaly detection such as impossible-travel
+  /// analysis, and post-incident investigation of suspicious sign-ins.
+  ip String
+  
+  /// Absolute URL of the endpoint or page at which sign-in was performed.
+  ///
+  /// Records the entry context of authentication for audit purposes.
+  href String
+  
+  /// HTTP referrer value supplied when the session was established.
+  ///
+  /// Helps identify whether sign-ins originate from expected application
+  /// surfaces or external links.
+  referrer String
+  
+  /// Moment at which the session was created by a successful sign-in.
+  ///
+  /// Serves both as the issuance time of the initial access/refresh token pair
+  /// and as the ordering key of the session history shown in account-security
+  /// views.
+  created_at DateTime @db.Timestamptz
+  
+  /// Moment at which the session stops being accepted, after which its access
+  /// and refresh tokens are refused.
+  ///
+  /// NOT NULL by design: every session carries a hard expiry from creation.
+  /// Refresh flows extend validity only up to policy limits while re-checking
+  /// the owner's current role and activation status; logout and forced
+  /// termination on deactivation shorten this timestamp to terminate the
+  /// session immediately.
+  expired_at DateTime @db.Timestamptz
+  
+  //----
+  // BELONGED RELATIONS,
+  //   - format: (propertyKey targetModel constraint)
+  //----
+  admin broker_desk_admins @relation(fields: [broker_desk_admin_id], references: [id], onDelete: Cascade)
+  
+  //----
+  // HAS RELATIONS
+  //   - format: (propertyKey targetModel)
+  //----
+  auditLogAttributions broker_desk_audit_log_of_admins[]
+  submissionMessageLogs broker_desk_submission_message_of_admins[]
+  
+  //----
+  // INDEXES
+  //----
+  @@index([broker_desk_admin_id, created_at])
+}
+
+/// Single-use, time-limited password reset tokens issued to {@link
+/// broker_desk_admins} administrators who cannot sign in, covering both
+/// self-service recovery requests and resets an administrator triggers on
+/// behalf of another user.
+///
+/// Each row records the hashed form of the emailed one-time token rather
+/// than any reusable secret, so exposure of stored rows cannot yield working
+/// credentials. A valid token must be presented together with a new password
+/// meeting the quality standard; successful presentation replaces the old
+/// password, after which the previous credential can no longer authenticate.
+///
+/// Token lifecycle is enforced entirely through timestamps: expired_at
+/// bounds validity from issuance, while consumed_at records the moment of
+/// successful use and prevents replay — expired or already-consumed tokens
+/// are rejected, requiring a fresh request. Rows carry permanent attribution
+/// to the affected {@link broker_desk_admins} account, with an optional
+/// requester reference identifying the acting administrator when the reset
+/// was initiated on behalf of someone else; self-service requests leave that
+/// reference empty. To avoid revealing whether an email address exists,
+/// reset requests for unknown or deactivated accounts create no row here and
+/// behave identically to known ones.
+///
+/// @namespace Actors
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_admin_password_resets {
+  //----
+  // COLUMNS
+  //----
+  /// Primary Key.
+  id String @id @db.Uuid
+  
+  /// Reference to the {@link broker_desk_admins} account whose password this
+  /// reset token may replace.
+  ///
+  /// Every token is permanently bound to exactly one administrator identity,
+  /// mirroring the requirement that a reset request targets a known, active
+  /// account; tokens belonging to deactivated administrators cannot complete a
+  /// successful sign-in even if consumed.
+  broker_desk_admin_id String @db.Uuid
+  
+  /// Optional reference to the {@link broker_desk_admins} account of the
+  /// acting administrator who triggered this reset on behalf of another user.
+  ///
+  /// Null for ordinary self-service recovery where the administrator requested
+  /// their own token; populated whenever an administrator initiates the reset
+  /// flow targeting a colleague, providing accountability for delegated
+  /// password administration.
+  requested_by_admin_id String? @db.Uuid
+  
+  /// Hashed form of the single-use reset token delivered by email; the
+  /// plaintext value is never persisted, and only the matching hash may be
+  /// presented together with a new password to complete recovery.
+  token_hash String
+  
+  /// Absolute deadline after which the token is rejected as expired; set at
+  /// issuance to enforce the time-limited nature of every reset request.
+  expired_at DateTime @db.Timestamptz
+  
+  /// Moment the token was successfully redeemed alongside a new password,
+  /// marking it consumed; null while the token remains unused, and non-null
+  /// values make replay impossible since consumed tokens are rejected.
+  consumed_at DateTime? @db.Timestamptz
+  
+  /// Timestamp when the reset request arrived and the token was issued and
+  /// dispatched by email.
+  created_at DateTime @db.Timestamptz
+  
+  //----
+  // BELONGED RELATIONS,
+  //   - format: (propertyKey targetModel constraint)
+  //----
+  admin broker_desk_admins @relation("broker_desk_admin_password_resets_of_broker_desk_admin_id", fields: [broker_desk_admin_id], references: [id], onDelete: Cascade)
+  requestedBy broker_desk_admins? @relation("broker_desk_admin_password_resets_of_requested_by_admin_id", fields: [requested_by_admin_id], references: [id], onDelete: Cascade)
+  
+  //----
+  // INDEXES
+  //----
+  @@index([requested_by_admin_id])
+  @@unique([token_hash])
+  // spellchecker: ignore-next-line
+  @@index([broker_desk_admin_id, created_at], map: "broker_desk_admin_password_resets_broker_desk_admin_id_7d944a59")
+}
+
+/// Time-limited, single-use email verification tokens confirming ownership
+/// of an administrator's email address before {@link broker_desk_admins}
+/// sign-in is permitted.
+///
+/// Each row is issued when an administrator registers, accepts an
+/// invitation, or later changes their email address, and a one-time token is
+/// delivered to that address. Only a hash of the delivered token is
+/// persisted, so exposure of database contents never yields usable
+/// credentials.
+///
+/// A row becomes permanently spent when consumed by a successful
+/// verification and is independently unusable once its hard expiry passes;
+/// because tokens are strictly single-use, every new verification request
+/// inserts a fresh row rather than mutating an existing one. Expired rows
+/// carry no account state and may be garbage-collected safely, while the
+/// consumption timestamp preserves a lightweight trail of completed
+/// verifications.
+///
+/// @namespace Actors
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_admin_email_verifications {
+  //----
+  // COLUMNS
+  //----
+  /// Primary Key.
+  id String @id @db.Uuid
+  
+  /// Administrator whose email address this verification attempt confirms.
+  ///
+  /// Exactly one {@link broker_desk_admins} row owns each token, matching the
+  /// single-recipient nature of the delivered email; the one-to-many direction
+  /// lets an administrator accumulate historical attempts across registration,
+  /// invitation acceptance, and later email changes without ever overwriting
+  /// earlier records.
+  broker_desk_admin_id String @db.Uuid
+  
+  /// Email address targeted by this verification attempt.
+  ///
+  /// Captured at issuance so the delivered message stays auditable even if the
+  /// administrator's profile email changes afterwards; a successful
+  /// verification proves control of exactly this address.
+  email String
+  
+  /// Hashed one-time verification token compared against the value the
+  /// administrator submits.
+  ///
+  /// The plaintext token exists only in the outbound email; persisting its
+  /// hash prevents database compromise from producing working credentials, and
+  /// the unique guarantee ensures each issued token maps to at most one
+  /// verification attempt.
+  token String
+  
+  /// Moment the verification request was generated and the token dispatched.
+  created_at DateTime @db.Timestamptz
+  
+  /// Hard deadline after which the token is rejected regardless of whether the
+  /// submitted value matches.
+  ///
+  /// Not-null by security default so every verification window is finite;
+  /// expired rows stay inert until garbage collection removes them.
+  expires_at DateTime @db.Timestamptz
+  
+  /// Timestamp when the token was successfully redeemed, completing email
+  /// confirmation for the owning administrator.
+  ///
+  /// Null while the token is still pending and set exactly once at redemption;
+  /// combined with the insert-only single-use policy this makes double
+  /// redemption impossible.
+  consumed_at DateTime? @db.Timestamptz
+  
+  //----
+  // BELONGED RELATIONS,
+  //   - format: (propertyKey targetModel constraint)
+  //----
+  admin broker_desk_admins @relation(fields: [broker_desk_admin_id], references: [id], onDelete: Cascade)
+  
+  //----
+  // INDEXES
+  //----
+  @@unique([token])
+  // spellchecker: ignore-next-line
+  @@index([broker_desk_admin_id, created_at], map: "broker_desk_admin_email_verifications_broker_desk_admi_0a952adb")
+}
+
+/// Append-only security audit trail recording authentication and
+/// account-management events performed on {@link broker_desk_admins}
+/// accounts, with each entry attributed to the acting administrator.
+///
+/// Every row captures one immutable event such as sign-in, sign-out, role
+/// change, activation, deactivation, password change,
+/// administrator-initiated password reset, or email verification completion.
+/// Entries are written once upon occurrence and never modified or removed,
+/// giving administrators a tamper-evident history for compliance review and
+/// accountability questions about who changed what and when.
+///
+/// Two relationships separate perspective: the mandatory
+/// acting-administrator attribution identifies who performed the action,
+/// while the optional target-administrator reference identifies whose
+/// account was affected whenever one administrator acts on a colleague, for
+/// example a role change or deactivation. Self-service events leave the
+/// target reference null because actor and subject coincide.
+///
+/// Forensic context accompanies each entry through the originating IP
+/// address and client user-agent string, enabling administrators to
+/// correlate suspicious activity across sessions.
+///
+/// @namespace Actors
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_admin_audit_logs {
+  //----
+  // COLUMNS
+  //----
+  /// Primary Key.
+  id String @id @db.Uuid
+  
+  /// Acting administrator attributed with this audit event.
+  ///
+  /// References the {@link broker_desk_admins} record identifying who
+  /// performed the authentication or account-management action, making every
+  /// recorded change attributable to its originator.
+  broker_desk_admin_id String @db.Uuid
+  
+  /// Administrator account affected when the event targets someone other than
+  /// the actor.
+  ///
+  /// Populated for administrative actions performed on another member, such as
+  /// role changes, reactivations, deactivations, or resets triggered on behalf
+  /// of another user; remains null for self-service events where the acting
+  /// user and affected account are the same person. References {@link
+  /// broker_desk_admins}.
+  target_broker_desk_admin_id String? @db.Uuid
+  
+  /// Machine-readable event classifier identifying what occurred.
+  ///
+  /// Holds stable labels such as login, logout, role_change, activation,
+  /// deactivation, password_change, password_reset_requested, or
+  /// email_verified, letting administrators filter the trail by kind of
+  /// security event.
+  action String
+  
+  /// Human-readable summary of the recorded event.
+  ///
+  /// Describes what happened in plain language with relevant specifics, such
+  /// as the previous and new roles after a role change or which administrator
+  /// requested a reset on another member's behalf.
+  detail String
+  
+  /// Source IP address from which the event originated.
+  ///
+  /// Captured for security forensics so administrators can correlate activity
+  /// across sessions and detect anomalous access patterns.
+  ip String
+  
+  /// User-agent string reported by the client application during the event.
+  ///
+  /// Preserves device and browser context supporting forensic review of
+  /// authentication and account-management activity.
+  user_agent String
+  
+  /// Timestamp when the audit event was written.
+  ///
+  /// Assigned once at insertion and never altered afterward, anchoring the
+  /// chronological order of the append-only trail.
+  created_at DateTime @db.Timestamptz
+  
+  //----
+  // BELONGED RELATIONS,
+  //   - format: (propertyKey targetModel constraint)
+  //----
+  admin broker_desk_admins @relation("broker_desk_admin_audit_logs_of_broker_desk_admin_id", fields: [broker_desk_admin_id], references: [id], onDelete: Cascade)
+  targetAdmin broker_desk_admins? @relation("broker_desk_admin_audit_logs_of_target_broker_desk_admin_id", fields: [target_broker_desk_admin_id], references: [id], onDelete: Cascade)
+  
+  //----
+  // INDEXES
+  //----
+  // spellchecker: ignore-next-line
+  @@index([broker_desk_admin_id, created_at], map: "broker_desk_admin_audit_logs_broker_desk_admin_id_crea_d985223d")
+  // spellchecker: ignore-next-line
+  @@index([target_broker_desk_admin_id, created_at], map: "broker_desk_admin_audit_logs_target_broker_desk_admin__cd293c57")
+  @@index([created_at])
+}
+
+/// Producer actor record representing a sales broker employed or contracted
+/// by one brokerage, owning a book of business that includes assigned {@link
+/// broker_desk_clients}, quotes, carrier submissions, policies, renewals,
+/// and commissions.
+///
+/// Provisioned exclusively through administrator invitation — there is no
+/// public self-registration path. Each row holds the email credential used
+/// for sign-in (unique across the platform), a password hash, a human-facing
+/// display name, and an active flag that administrators toggle to suspend or
+/// restore access without deleting the account.
+///
+/// Every producer belongs to exactly one {@link broker_desk_organizations}
+/// row for tenant isolation; all business records owned by the producer
+/// reference this table by foreign key. Authentication mechanics live in
+/// companion artifacts ({@link broker_desk_producer_sessions}, {@link
+/// broker_desk_producer_password_resets}, {@link
+/// broker_desk_producer_email_verifications}) managed by auth flows rather
+/// than on this row.
+///
+/// @namespace Actors
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_producers {
+  //----
+  // COLUMNS
+  //----
+  /// Primary Key.
+  id String @id @db.Uuid
+  
+  /// Owning brokerage tenant of this producer.
+  ///
+  /// Every business record the producer creates or owns is ultimately scoped
+  /// to the referenced {@link broker_desk_organizations} row, enforcing
+  /// multi-tenant isolation. The relationship is non-optional and 1:N — an
+  /// organization keeps many producers while each producer belongs to exactly
+  /// one organization.
+  broker_desk_organization_id String @db.Uuid
+  
+  /// Sign-in email address of the producer, unique across all actors in the
+  /// platform and used as the primary credential lookup during login and
+  /// invitation flows.
+  email String
+  
+  /// Salted password hash verifying the producer's password at sign-in; never
+  /// stores plaintext credentials.
+  password_hash String
+  
+  /// Human-readable display name shown across staff rosters, client timelines,
+  /// task assignees, commission statements, and audit attributions.
+  display_name String
+  
+  /// Activation state of the account: true when the producer may authenticate
+  /// and operate, false after administrative deactivation; deactivation
+  /// terminates active sessions without deleting history.
+  active Boolean
+  
+  /// Timestamp when the producer account row was created through administrator
+  /// provisioning.
+  created_at DateTime @db.Timestamptz
+  
+  /// Timestamp of the most recent mutation of this producer row, refreshed
+  /// whenever profile data, credentials, or activation state change.
+  updated_at DateTime @db.Timestamptz
+  
+  /// Soft-delete marker set when the account is retired; null while the
+  /// producer remains an ordinary retrievable record.
+  deleted_at DateTime? @db.Timestamptz
+  
+  //----
+  // BELONGED RELATIONS,
+  //   - format: (propertyKey targetModel constraint)
+  //----
+  organization broker_desk_organizations @relation(fields: [broker_desk_organization_id], references: [id], onDelete: Cascade)
+  
+  //----
+  // HAS RELATIONS
+  //   - format: (propertyKey targetModel)
+  //----
+  sessions broker_desk_producer_sessions[]
+  passwordResets broker_desk_producer_password_resets[]
+  emailVerifications broker_desk_producer_email_verifications[]
+  licences broker_desk_producer_licences[]
+  auditLogAttributions broker_desk_audit_log_of_producers[]
+  authoredActivities broker_desk_activity_of_producers[]
+  taskAssignments broker_desk_task_of_producers[]
+  quotes broker_desk_quotes[]
+  submissionMessageAttributions broker_desk_submission_message_of_producers[]
+  policies broker_desk_policies[]
+  commissions broker_desk_commissions[]
+  commissionStatements broker_desk_commission_statements[]
+  documentVersionOfProducers broker_desk_document_version_of_producers[]
+  
+  //----
+  // INDEXES
+  //----
+  @@unique([email])
+  // spellchecker: ignore-next-line
+  @@index([broker_desk_organization_id, created_at], map: "broker_desk_producers_broker_desk_organization_id_crea_733856bc")
+  @@index([display_name(ops: raw("gin_trgm_ops"))], type: Gin)
+}
+
+/// A JWT sign-in session record for a {@link broker_desk_producers} account,
+/// issuing a short-lived access token paired with a longer-lived refresh
+/// credential so an authenticated producer stays signed in across requests
+/// without re-entering credentials.
+///
+/// Each row captures the device context observed at sign-in — the client IP
+/// address, the application URL where authentication was performed, and the
+/// referrer header — forming an append-only audit trail of producer logins.
+/// Sessions are permanently bound to the producer's brokerage through the
+/// owning producer reference, because {@link broker_desk_producers} carries
+/// the organization membership, so a session can never migrate across tenant
+/// boundaries.
+///
+/// Invalidation follows two paths: logout advances the expiry moment so the
+/// paired access and refresh tokens stop working immediately, and
+/// deactivation of the underlying producer account forces termination of
+/// every live session belonging to that producer. The expired_at column is
+/// never null for security reasons, guaranteeing that no session outlives
+/// its declared lifetime.
+///
+/// @namespace Actors
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_producer_sessions {
+  //----
+  // COLUMNS
+  //----
+  /// Primary key identifying the session; also serves as the subject from
+  /// which the paired access token is derived.
+  id String @id @db.Uuid
+  
+  /// The producer whose sign-in established this session.
+  ///
+  /// Every session belongs to exactly one {@link broker_desk_producers}
+  /// record, which carries the brokerage membership; this indirection
+  /// permanently binds each authenticated session to a single organization and
+  /// blocks cross-tenant token usage. Deactivating the producer account
+  /// invalidates all sessions referencing it.
+  broker_desk_producer_id String @db.Uuid
+  
+  /// Client IP address observed when the producer authenticated.
+  ///
+  /// Retained for security auditing so staff can review where producer
+  /// sign-ins originate and detect suspicious access patterns.
+  ip String
+  
+  /// Application URL at which the producer performed authentication.
+  ///
+  /// Distinguishes portal-originated sign-ins and helps debug authentication
+  /// flows.
+  href String
+  
+  /// HTTP referrer header value captured at sign-in time.
+  ///
+  /// May be blank when the browser withheld the header; kept purely for
+  /// forensic context.
+  referrer String
+  
+  /// Moment the session was established by a successful producer sign-in.
+  ///
+  /// Combined with the producer foreign key in a composite index to power
+  /// recent-login listings and audit queries.
+  created_at DateTime @db.Timestamptz
+  
+  /// Moment after which the session must be re-authenticated.
+  ///
+  /// Always non-null as a security invariant; logout sets it to the current
+  /// instant, and forced termination after producer deactivation applies the
+  /// same treatment to every live session.
+  expired_at DateTime @db.Timestamptz
+  
+  //----
+  // BELONGED RELATIONS,
+  //   - format: (propertyKey targetModel constraint)
+  //----
+  producer broker_desk_producers @relation(fields: [broker_desk_producer_id], references: [id], onDelete: Cascade)
+  
+  //----
+  // HAS RELATIONS
+  //   - format: (propertyKey targetModel)
+  //----
+  auditLogAttributions broker_desk_audit_log_of_producers[]
+  submissionMessageAttributions broker_desk_submission_message_of_producers[]
+  
+  //----
+  // INDEXES
+  //----
+  // spellchecker: ignore-next-line
+  @@index([broker_desk_producer_id, created_at], map: "broker_desk_producer_sessions_broker_desk_producer_id__0a6daddc")
+}
+
+/// Single-use, time-limited password reset tokens allowing producers who
+/// cannot sign in to set a new password without supplying the old one.
+///
+/// Each row is appended when a producer requests recovery (or an
+/// administrator triggers it on their behalf): an emailed one-time token is
+/// stored only as a hash, stays redeemable until expired_at, and is
+/// permanently sealed by stamping consumed_at once the credential change
+/// succeeds. Expired or already-consumed rows are never reused; any further
+/// request always issues a fresh token.
+///
+/// Security context travels with the row - the requester's IP address and
+/// issuance timestamp support rate-limiting checks and anomaly review when
+/// repeated recovery attempts target the same {@link broker_desk_producers}
+/// account.
+///
+/// Relationships: every token belongs to exactly one producer in {@link
+/// broker_desk_producers}, while one producer may accumulate many historical
+/// reset records over time.
+///
+/// @namespace Actors
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_producer_password_resets {
+  //----
+  // COLUMNS
+  //----
+  /// Primary Key of the reset-token record.
+  id String @id @db.Uuid
+  
+  /// Reference to the producer account whose password this token may reset.
+  ///
+  /// Each reset token belongs to exactly one {@link broker_desk_producers}
+  /// row; a producer may hold many reset records over time, but each
+  /// individual token can discharge only the credential change of its own
+  /// producer. The relationship points strictly from this child artifact to
+  /// the parent identity, mirroring the session-table direction.
+  broker_desk_producer_id String @db.Uuid
+  
+  /// Hashed one-time reset token delivered to the producer by email.
+  ///
+  /// The raw value is never persisted anywhere; redemption compares hashes, so
+  /// a database leak cannot expose usable reset links.
+  token String
+  
+  /// IP address from which the reset was requested.
+  ///
+  /// Recorded for security review and anomaly detection, backing rate-limit
+  /// decisions when repeated recovery requests hit the same producer account.
+  ip String
+  
+  /// Deadline after which the token is no longer accepted.
+  ///
+  /// Not-null by default for security: redemption requires the row to be both
+  /// unconsumed and inside this window, and expired tokens can only be
+  /// superseded by newly issued ones.
+  expired_at DateTime @db.Timestamptz
+  
+  /// Moment the token was redeemed to set a new password; null while the token
+  /// is still pending.
+  ///
+  /// Stamping this value enforces single-use semantics without deleting the
+  /// row, preserving the producer's recovery history for security audits.
+  consumed_at DateTime? @db.Timestamptz
+  
+  /// Timestamp when the reset was requested and the token issued.
+  ///
+  /// Serves as the ordering basis for per-producer recovery-history listings
+  /// and expiry-window bookkeeping alongside expired_at.
+  created_at DateTime @db.Timestamptz
+  
+  //----
+  // BELONGED RELATIONS,
+  //   - format: (propertyKey targetModel constraint)
+  //----
+  // spellchecker: ignore-next-line
+  producer broker_desk_producers @relation(fields: [broker_desk_producer_id], references: [id], onDelete: Cascade, map: "broker_desk_producer_password_resets_broker_desk_produ_6da3fbd7")
+  
+  //----
+  // INDEXES
+  //----
+  @@unique([token])
+  // spellchecker: ignore-next-line
+  @@index([broker_desk_producer_id, created_at], map: "broker_desk_producer_password_resets_broker_desk_produ_d9c2c13e")
+}
+
+/// One-time verification tokens confirming a {@link broker_desk_producers
+/// producer}'s email address before sign-in is permitted, also serving as
+/// the identity-confirmation step of the administrator-invited activation
+/// path.
+///
+/// Each row records a single emailed challenge, issued either from the
+/// welcome message sent at invitation time or from a subsequent resend
+/// request. Only a digest of the emailed token is stored so a database
+/// compromise never yields usable credentials, and each row carries its own
+/// expiry deadline plus a nullable consumption marker distinguishing
+/// pending, satisfied, and stale challenges.
+///
+/// Rules enforced through this table: sign-in remains refused while the
+/// producer's email is unverified; presenting an expired or already-consumed
+/// token is rejected and requires issuing a fresh message; and completing an
+/// invitation setup link counts as verification, so the activated account
+/// may sign in immediately. Rows are append-only security artifacts and are
+/// never modified after creation.
+///
+/// @namespace Actors
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_producer_email_verifications {
+  //----
+  // COLUMNS
+  //----
+  /// Primary Key.
+  id String @id @db.Uuid
+  
+  /// Producer account whose email address this challenge confirms.
+  ///
+  /// Every verification attempt binds to exactly one {@link
+  /// broker_desk_producers producer}; resending inserts a new row rather than
+  /// mutating prior ones, so a producer accumulates an append-only history of
+  /// challenges, and sign-in gating consults the state established by the
+  /// redeemed row.
+  broker_desk_producer_id String @db.Uuid
+  
+  /// Email address this challenge was issued to confirm.
+  ///
+  /// Captured at issuance so the record documents which address was verified
+  /// even if the {@link broker_desk_producers producer} later changes their
+  /// contact email; the address becomes verified once a valid token for this
+  /// row is redeemed.
+  email String
+  
+  /// Hashed form of the one-time verification token embedded in the emailed
+  /// confirmation link.
+  ///
+  /// Persisting only the digest prevents replay from leaked data; resolution
+  /// of a presented raw token occurs through this column's unique index.
+  token String
+  
+  /// Moment the challenge was issued and the verification email dispatched.
+  created_at DateTime @db.Timestamptz
+  
+  /// Deadline after which the token is no longer acceptable.
+  ///
+  /// A presentation past this moment is rejected, and the producer must
+  /// request a fresh verification message.
+  expired_at DateTime @db.Timestamptz
+  
+  /// Moment the token was successfully redeemed to mark the email verified.
+  ///
+  /// Null while the challenge is pending; written exactly once at redemption,
+  /// enforcing single-use semantics - any later presentation finds a non-null
+  /// value and is rejected as already used.
+  consumed_at DateTime? @db.Timestamptz
+  
+  //----
+  // BELONGED RELATIONS,
+  //   - format: (propertyKey targetModel constraint)
+  //----
+  // spellchecker: ignore-next-line
+  producer broker_desk_producers @relation(fields: [broker_desk_producer_id], references: [id], onDelete: Cascade, map: "broker_desk_producer_email_verifications_broker_desk_p_d0102f6b")
+  
+  //----
+  // INDEXES
+  //----
+  @@unique([token])
+  // spellchecker: ignore-next-line
+  @@index([broker_desk_producer_id, created_at], map: "broker_desk_producer_email_verifications_broker_desk_p_9fc02b41")
+}
+
+/// A customer service representative staff account of a brokerage, holding
+/// email and password credentials, a display name, an activation standing,
+/// and membership in exactly one {@link broker_desk_organizations}.
+///
+/// CSR accounts are provisioned exclusively through administrator invitation
+/// inside an established organization; public self-registration is reserved
+/// for the first-administrator flow that creates the organization itself. An
+/// invited account starts without a password and reaches its first sign-in
+/// through a single-use, time-limited setup path, whose acceptance also
+/// serves as the email-verification step for the address.
+///
+/// The role encoded by this table carries agency-wide service reach inside
+/// its own brokerage — servicing any client, recording activities,
+/// processing endorsements, handling documents, and coordinating tasks —
+/// while every query executed under this identity stays confined to the
+/// owning organization's data envelope. Role-based authorization blocks all
+/// administrative capabilities such as user management and organization
+/// settings regardless of how valid the session is.
+///
+/// Accounts are never permanently deleted. Deactivation by an administrator
+/// bars sign-in immediately, stops refresh-token renewal, and removes the
+/// account from assignment choices while historical records keep displaying
+/// the display name for reporting and audit; reactivation restores prior
+/// access with no loss of history. Login sessions, password resets, and
+/// email-verification tokens live in companion runtime tables managed by the
+/// authentication layer.
+///
+/// @namespace Actors
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_csrs {
+  //----
+  // COLUMNS
+  //----
+  /// Primary Key.
+  id String @id @db.Uuid
+  
+  /// References the brokerage ({@link broker_desk_organizations}) that owns
+  /// and governs this CSR account.
+  ///
+  /// Every CSR belongs to exactly one organization with no multi-brokerage
+  /// staff membership. This reference defines the tenant boundary for all
+  /// servicing work — clients, quotes, policies, endorsements, documents,
+  /// tasks, and invoices reachable under this identity — and administrators
+  /// may manage the account only from within their own organization.
+  broker_desk_organization_id String @db.Uuid
+  
+  /// Sign-in identifier of the account, presented at login together with the
+  /// password credential.
+  ///
+  /// The address uniquely names the account within its organization and
+  /// receives invitations, email-verification messages, and password-reset
+  /// tokens. Uniqueness is enforced per organization through a composite
+  /// constraint so that independent brokerages never collide on the same
+  /// address.
+  email String
+  
+  /// Stored credential proving the person's identity at sign-in.
+  ///
+  /// Nullable because administrator-invited accounts start without a password:
+  /// the invitee establishes the initial password through a one-time setup
+  /// path, and until then the account exists but cannot sign in. The value is
+  /// never displayed once chosen and is replaced only through the self-service
+  /// change or the token-based reset flows.
+  password_hash String?
+  
+  /// Human-readable name shown throughout the application.
+  ///
+  /// It labels every record attributed to the CSR — recorded client
+  /// activities, raised tasks, uploaded documents, processed endorsements —
+  /// and keeps displaying on those historical records for reporting and audit
+  /// purposes even after the account has been deactivated.
+  display_name String
+  
+  /// Activation standing controlling whether sign-in is currently permitted.
+  ///
+  /// Only administrators may flip this flag, and only within their own
+  /// organization. Deactivation immediately bars sign-in, stops refresh-token
+  /// renewal, and removes the account from client, task, and document
+  /// assignment choices; reactivation restores the previous access with no
+  /// loss of history. Each transition is captured in the append-only audit
+  /// trail together with the acting administrator's identity.
+  active Boolean
+  
+  /// Timestamp when the invited account row was created, preceding the moment
+  /// the invitee completes initial setup and first sign-in.
+  created_at DateTime @db.Timestamptz
+  
+  /// Timestamp of the most recent mutation of the account, such as
+  /// display-name edits, credential changes, or activation-state flips.
+  updated_at DateTime @db.Timestamptz
+  
+  /// Soft-deletion timestamp; null while the account remains in force.
+  ///
+  /// Staff accounts are never permanently deleted so that every attributed
+  /// record stays intact and attributable; removal-like effects are expressed
+  /// exclusively through the activation standing instead.
+  deleted_at DateTime? @db.Timestamptz
+  
+  //----
+  // BELONGED RELATIONS,
+  //   - format: (propertyKey targetModel constraint)
+  //----
+  organization broker_desk_organizations @relation(fields: [broker_desk_organization_id], references: [id], onDelete: Cascade)
+  
+  //----
+  // HAS RELATIONS
+  //   - format: (propertyKey targetModel)
+  //----
+  sessions broker_desk_csr_sessions[]
+  passwordResets broker_desk_csr_password_resets[]
+  emailVerifications broker_desk_csr_email_verifications[]
+  auditLogAttributions broker_desk_audit_log_of_csrs[]
+  activityAuthorships broker_desk_activity_of_csrs[]
+  taskAssignments broker_desk_task_of_csrs[]
+  loggedSubmissionMessages broker_desk_submission_message_of_csrs[]
+  endorsements broker_desk_policy_endorsements[]
+  reinstatements broker_desk_policy_reinstatements[]
+  documentVersionFilings broker_desk_document_version_of_csrs[]
+  
+  //----
+  // INDEXES
+  //----
+  @@unique([broker_desk_organization_id, email])
+  @@index([broker_desk_organization_id, active])
+  @@index([display_name(ops: raw("gin_trgm_ops"))], type: Gin)
+}
+
+/// JWT sign-in session record belonging to exactly one customer service
+/// representative ({@link broker_desk_csrs}), issuing short-lived access
+/// tokens paired with longer-lived refresh tokens that remain permanently
+/// bound to the representative's own brokerage and terminate on logout,
+/// refresh-rotation failure, or forced invalidation following account
+/// deactivation.
+///
+/// Each row captures one authenticated CSR session so authorization flows
+/// can validate, renew, and revoke service-side access without touching
+/// business data. Because every token derives its authority from the
+/// referenced {@link broker_desk_csrs} account, role checks, active-flag
+/// verification, and brokerage scoping all resolve through the single
+/// foreign key below, confining the caller to their organization without
+/// duplicating tenant data onto the session row.
+///
+/// Sessions are append-only security artifacts managed entirely through
+/// authentication flows: creation occurs at successful sign-in, renewal
+/// advances the expiry, and logout or deactivation-driven termination pulls
+/// the expiry to the current moment instead of deleting the row, preserving
+/// a complete sign-in history for security review.
+///
+/// @namespace Actors
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_csr_sessions {
+  //----
+  // COLUMNS
+  //----
+  /// Primary key uniquely identifying an individual CSR sign-in session across
+  /// its whole lifecycle, also serving as the stable reference embedded in
+  /// issued token claims.
+  id String @id @db.Uuid
+  
+  /// Owning customer service representative whose credentials established this
+  /// session.
+  ///
+  /// References {@link broker_desk_csrs}; every access and refresh token
+  /// minted under this row inherits that account's role, active flag, and
+  /// organization membership, which confines all servicing reach to the
+  /// caller's own brokerage. Deactivating the referenced CSR forces
+  /// termination of every still-open session belonging to that representative.
+  broker_desk_csr_id String @db.Uuid
+  
+  /// IP address from which the sign-in request was received.
+  ///
+  /// Captured once at session establishment for device-context tracking and
+  /// post-hoc security auditing of CSR access patterns.
+  ip String
+  
+  /// Absolute URL of the application page that initiated the sign-in request.
+  ///
+  /// Preserves the entry point of the session so audits can reconstruct where
+  /// authentication began.
+  href String
+  
+  /// Referrer URL supplied by the client application when the sign-in request
+  /// was issued.
+  ///
+  /// Complements href in reconstructing the navigation context that led to
+  /// session creation.
+  referrer String
+  
+  /// Moment the session was established through successful CSR authentication.
+  ///
+  /// Serves as the chronological ordering key for per-representative session
+  /// history and pairs with the composite index used when listing recent
+  /// sessions.
+  created_at DateTime @db.Timestamptz
+  
+  /// Moment after which this session no longer validates access nor accepts
+  /// renewal requests.
+  ///
+  /// Set in the future at creation to bound refresh-token lifetime, advanced
+  /// by refresh rotation, and pulled back to the current time upon logout or
+  /// forced termination after account deactivation; never null, keeping
+  /// expired rows queryable within the append-only trail.
+  expired_at DateTime @db.Timestamptz
+  
+  //----
+  // BELONGED RELATIONS,
+  //   - format: (propertyKey targetModel constraint)
+  //----
+  csr broker_desk_csrs @relation(fields: [broker_desk_csr_id], references: [id], onDelete: Cascade)
+  
+  //----
+  // HAS RELATIONS
+  //   - format: (propertyKey targetModel)
+  //----
+  submissionMessages broker_desk_submission_message_of_csrs[]
+  
+  //----
+  // INDEXES
+  //----
+  @@index([broker_desk_csr_id, created_at])
+}
+
+/// Single-use, time-limited credential-recovery token for a {@link
+/// broker_desk_csrs} staff account, enabling password recovery when the CSR
+/// cannot sign in.
+///
+/// Issued whenever a password reset is requested for a known, active CSR
+/// email address — whether self-requested by the CSR or initiated by an
+/// administrator on their behalf — each row persists only the cryptographic
+/// hash of the emailed one-time token, never the token itself. Delivery may
+/// be written to logs instead of actually emailed in development
+/// environments.
+///
+/// A token is consumable exactly once: presenting a valid, unused, unexpired
+/// record together with a new password meeting the quality standard replaces
+/// the old credential. Attempts using an invalid, reused, or expired token
+/// are rejected and leave the account unchanged, after which a fresh request
+/// must be made.
+///
+/// Rows are retained as a security audit trail of credential-recovery
+/// activity; expired or consumed tokens carry no residual access capability
+/// and may be purged by scheduled cleanup.
+///
+/// @namespace Actors
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_csr_password_resets {
+  //----
+  // COLUMNS
+  //----
+  /// Primary Key.
+  id String @id @db.Uuid
+  
+  /// References the {@link broker_desk_csrs} staff account whose password this
+  /// token may reset.
+  ///
+  /// Exactly one CSR owns each reset request; the relationship is non-optional
+  /// because a token cannot exist without the account it recovers. A CSR
+  /// accumulates multiple reset records over time, forming a recovery history
+  /// in which only an unconsumed, unexpired token remains practically usable.
+  broker_desk_csr_id String @db.Uuid
+  
+  /// Cryptographic hash of the one-time reset token delivered to the CSR's
+  /// email address.
+  ///
+  /// Only the SHA-256 digest is persisted so that a database compromise cannot
+  /// expose usable recovery credentials; incoming tokens are hashed before
+  /// lookup against this column. Uniqueness enforces one row per issued token
+  /// and makes token presentation an indexed constant-time lookup.
+  token_hash String
+  
+  /// Deadline after which the token is no longer acceptable for completing a
+  /// password change.
+  ///
+  /// Set at issuance to enforce the time-limited nature of recovery tokens;
+  /// presentation after this moment is rejected and requires issuing a fresh
+  /// request.
+  expires_at DateTime @db.Timestamptz
+  
+  /// Moment the token was successfully consumed to complete a password change,
+  /// or null while still unused.
+  ///
+  /// A non-null value marks the row as spent, enforcing single-use semantics:
+  /// reused tokens are rejected even within their validity window.
+  used_at DateTime? @db.Timestamptz
+  
+  /// Issuance timestamp recorded when the password reset was requested.
+  ///
+  /// Orders the recovery history per {@link broker_desk_csrs} account and
+  /// anchors audit reporting of credential-recovery activity.
+  created_at DateTime @db.Timestamptz
+  
+  /// Timestamp of the latest modification, advancing primarily when the token
+  /// is consumed.
+  ///
+  /// Distinguishes untouched pending requests from rows mutated during
+  /// consumption without altering the original issuance time.
+  updated_at DateTime @db.Timestamptz
+  
+  //----
+  // BELONGED RELATIONS,
+  //   - format: (propertyKey targetModel constraint)
+  //----
+  csr broker_desk_csrs @relation(fields: [broker_desk_csr_id], references: [id], onDelete: Cascade)
+  
+  //----
+  // INDEXES
+  //----
+  @@unique([token_hash])
+  // spellchecker: ignore-next-line
+  @@index([broker_desk_csr_id, created_at], map: "broker_desk_csr_password_resets_broker_desk_csr_id_cre_0a89b1d0")
+  @@index([expires_at])
+}
+
+/// One-time email verification tokens confirming a {@link broker_desk_csrs
+/// CSR}'s email address before sign-in is permitted.
+///
+/// Each row records a single verification attempt issued to a customer
+/// service representative, holding the exact email address being verified
+/// together with a secure one-time token and its expiry moment. While a
+/// CSR's email remains unverified, sign-in is refused, so this table
+/// directly gates a CSR's first successful authentication following
+/// administrator invitation.
+///
+/// Tokens are strictly single-use: presenting a valid, unexpired token
+/// consumes the record, and any subsequent presentation of the same token is
+/// rejected. When a token has expired without consumption or was already
+/// used, the system issues a fresh verification message rather than reviving
+/// the stale record, keeping the verification history append-only.
+///
+/// @namespace Actors
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_csr_email_verifications {
+  //----
+  // COLUMNS
+  //----
+  /// Primary Key.
+  id String @id @db.Uuid
+  
+  /// Reference to the {@link broker_desk_csrs CSR} account whose email address
+  /// this verification token confirms.
+  ///
+  /// Every token belongs to exactly one customer service representative
+  /// account, while a single CSR may accumulate several verification rows over
+  /// time as invitations are re-issued or addresses change, forming an
+  /// append-only verification history rather than an overwrite.
+  broker_desk_csr_id String @db.Uuid
+  
+  /// Email address this token verifies.
+  ///
+  /// Snapshots the CSR's email address at issuance time so a later address
+  /// change cannot retroactively reinterpret older tokens; acceptance logic
+  /// matches the presented token against this recorded address context.
+  email String
+  
+  /// Secure one-time verification token carried inside the emailed
+  /// verification link.
+  ///
+  /// Stored in hashed form so exposure of stored data cannot reveal usable
+  /// verification links; global uniqueness guarantees every dispatched message
+  /// references a distinct token value.
+  token String
+  
+  /// Timestamp recording when this verification token was generated and its
+  /// verification email dispatched.
+  ///
+  /// Serves as the chronological anchor for the per-CSR verification history
+  /// and for auditing repeated re-issue requests.
+  created_at DateTime @db.Timestamptz
+  
+  /// Moment after which this token is no longer acceptable.
+  ///
+  /// NOT NULL by design because verification links are security-sensitive and
+  /// must always carry a bounded lifetime; presenting an expired token is
+  /// rejected and a fresh message must be requested instead.
+  expired_at DateTime @db.Timestamptz
+  
+  /// Timestamp marking when the token was successfully presented and the CSR's
+  /// email confirmed; NULL means the token is still unused.
+  ///
+  /// A presentation attempt against a row whose consumed_at is already set is
+  /// rejected as reuse, enforcing strictly one-time verification semantics.
+  consumed_at DateTime? @db.Timestamptz
+  
+  //----
+  // BELONGED RELATIONS,
+  //   - format: (propertyKey targetModel constraint)
+  //----
+  csr broker_desk_csrs @relation(fields: [broker_desk_csr_id], references: [id], onDelete: Cascade)
+  
+  //----
+  // INDEXES
+  //----
+  @@unique([token])
+  // spellchecker: ignore-next-line
+  @@index([broker_desk_csr_id, created_at], map: "broker_desk_csr_email_verifications_broker_desk_csr_id_81f60ff2")
+}
+
+/// A portal client authentication identity: an insured customer's sign-in
+/// account, provisioned by an administrator of exactly one brokerage against
+/// that customer's existing client profile.
+///
+/// Unlike staff accounts, this identity performs no work inside the
+/// brokerage; its grants are limited to reading its own policies and
+/// documents and submitting service requests through the deferred
+/// self-service portal. The account is always tied to exactly one {@link
+/// broker_desk_organizations} tenant — it never floats free and never spans
+/// brokerages — and role separation guarantees no hybrid staff-and-customer
+/// account exists. Public registration never creates these identities;
+/// provisioning is exclusively administrative.
+///
+/// Sign-in uses email and password credentials verified by the shared token
+/// machinery: one-time tokens confirming control of the email address
+/// (carried in companion verification tables) must be redeemed before first
+/// successful sign-in, and password recovery proceeds through single-use
+/// reset tokens without revealing whether an address exists. Sessions issue
+/// paired access and refresh tokens confined to the owning brokerage.
+///
+/// Accounts are never physically deleted. An administrator deactivates the
+/// identity instead, which bars sign-in immediately while every historical
+/// attribution remains intact; reactivation restores ordinary access with no
+/// loss of history.
+///
+/// @namespace Actors
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_clients {
+  //----
+  // COLUMNS
+  //----
+  /// Primary key that uniquely identifies each portal client authentication
+  /// identity.
+  id String @id @db.Uuid
+  
+  /// Membership of this portal account in exactly one brokerage organization.
+  ///
+  /// The identity is provisioned by an administrator of that organization
+  /// against an existing client profile maintained in the CRM domain, and
+  /// every entitlement the account carries derives from being the subject of
+  /// records inside this single tenant. The reference to {@link
+  /// broker_desk_organizations} enforces tenant isolation: all session queries
+  /// executed under this identity are scoped to this organization only.
+  organization_id String @db.Uuid
+  
+  /// Sign-in identifier of the portal account.
+  ///
+  /// The email address uniquely names the account across the whole platform
+  /// and is what the insured customer submits together with their password at
+  /// sign-in. Control of the address is proven through the one-time token flow
+  /// carried by {@link broker_desk_client_email_verifications}; sign-in stays
+  /// refused until verification completes, and a fresh message can be
+  /// requested when the token has expired or was used.
+  email String
+  
+  /// Stored credential proving the customer's identity at sign-in.
+  ///
+  /// Only the irreversible hash is ever persisted; the plaintext password is
+  /// never displayed once chosen and can be replaced solely through the
+  /// single-use, time-limited token flow carried by {@link
+  /// broker_desk_client_password_resets}, including resets an administrator
+  /// triggers on the customer's behalf when they lose access to their mailbox.
+  password_hash String
+  
+  /// Activation standing controlling whether sign-in is currently permitted
+  /// for this identity.
+  ///
+  /// Accounts are never physically deleted: an administrator deactivates the
+  /// identity instead, barring sign-in immediately while every historical
+  /// record stays attributable, and reactivation restores ordinary access with
+  /// no loss of history. Administrators cannot deactivate their own account,
+  /// and the last active administrator in the organization is always protected
+  /// from deactivation.
+  active Boolean
+  
+  /// Timestamp marking when the customer completed the email verification flow
+  /// and confirmed control of the sign-in address.
+  ///
+  /// Null means the address is unverified, in which case sign-in is refused
+  /// regardless of correct credentials and a fresh verification message may be
+  /// offered; presenting a valid, unused, unexpired token from {@link
+  /// broker_desk_client_email_verifications} fills this value and unlocks
+  /// normal sign-in.
+  email_verified_at DateTime? @db.Timestamptz
+  
+  /// Moment the administrator provisioned this portal identity against the
+  /// existing client profile.
+  created_at DateTime @db.Timestamptz
+  
+  /// Last modification timestamp of the account, reflecting credential
+  /// replacement, activation or deactivation changes, and email verification
+  /// completion.
+  updated_at DateTime @db.Timestamptz
+  
+  //----
+  // BELONGED RELATIONS,
+  //   - format: (propertyKey targetModel constraint)
+  //----
+  organization broker_desk_organizations @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+  
+  //----
+  // HAS RELATIONS
+  //   - format: (propertyKey targetModel)
+  //----
+  sessions broker_desk_client_sessions[]
+  passwordResets broker_desk_client_password_resets[]
+  emailVerifications broker_desk_client_email_verifications[]
+  contacts broker_desk_client_contacts[]
+  activities broker_desk_activities[]
+  tasks broker_desk_tasks[]
+  tags broker_desk_client_tags[]
+  addressOwners broker_desk_address_of_clients[]
+  quotes broker_desk_quotes[]
+  policies broker_desk_policies[]
+  invoices broker_desk_invoices[]
+  documentClientOwners broker_desk_document_client_owners[]
+  
+  //----
+  // INDEXES
+  //----
+  @@unique([email])
+  @@index([organization_id, created_at])
+}
+
+/// JWT authentication session issued to a portal client identity after
+/// successful sign-in, carrying paired access-token and refresh-token grants
+/// under the same token machinery used by staff actors.
+///
+/// Each row belongs to exactly one {@link broker_desk_clients} portal
+/// identity and records the network context of the sign-in request ({@link
+/// broker_desk_client_sessions.ip}, href, referrer), the moment the session
+/// was established, and the hard expiry deadline enforced by the
+/// authorization layer. Access tokens are validated statelessly against
+/// their signature while refresh flows re-issue short-lived tokens bound to
+/// this row, so logging out or forcibly terminating the session revokes both
+/// grants at once.
+///
+/// Sessions are append-only security artifacts managed exclusively by
+/// authentication flows: created at login, renewed through refresh while
+/// still valid, and ended by explicit logout or automatic invalidation when
+/// the owning client's credentials change or the account is deactivated.
+/// They never hold business data — commercial records reference clients
+/// directly rather than through sessions.
+///
+/// @namespace Actors
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_client_sessions {
+  //----
+  // COLUMNS
+  //----
+  /// Primary key identifying this portal-client sign-in session.
+  ///
+  /// Referenced by the authorization layer when validating refresh-token
+  /// grants against live sessions.
+  id String @id @db.Uuid
+  
+  /// Portal client identity that owns this sign-in session.
+  ///
+  /// Exactly one {@link broker_desk_clients} record issues any number of
+  /// sessions across devices and browsers, so the relationship is one-to-many
+  /// and mandatory — a session cannot exist without its authenticated owner.
+  /// Termination of all rows bearing this reference is how account
+  /// deactivation and credential changes revoke outstanding portal access.
+  broker_desk_client_id String @db.Uuid
+  
+  /// IP address from which the sign-in request originated.
+  ///
+  /// Captured for device auditing so users can recognize unfamiliar sign-ins
+  /// and support staff can investigate suspicious portal activity.
+  ip String
+  
+  /// URL of the page from which the portal sign-in flow was initiated.
+  ///
+  /// Preserves the entry point so post-login navigation can return the user
+  /// toward their original destination and audits retain request origin.
+  href String
+  
+  /// Referrer URL supplied by the browser during sign-in.
+  ///
+  /// Complements {@link broker_desk_client_sessions.ip} and href in
+  /// reconstructing the request context of session establishment.
+  referrer String
+  
+  /// Moment the session was established by a successful sign-in or refresh
+  /// grant.
+  ///
+  /// Serves as the sort anchor of the composite session-history index and
+  /// marks the start of validity alongside expired_at.
+  created_at DateTime @db.Timestamptz
+  
+  /// Hard expiry deadline after which the session can no longer be renewed or
+  /// honored.
+  ///
+  /// NOT NULL by security policy: every session is born with a finite
+  /// lifetime, and logout or forced invalidation ends the session earlier than
+  /// this bound rather than relying on nullable markers.
+  expired_at DateTime @db.Timestamptz
+  
+  //----
+  // BELONGED RELATIONS,
+  //   - format: (propertyKey targetModel constraint)
+  //----
+  client broker_desk_clients @relation(fields: [broker_desk_client_id], references: [id], onDelete: Cascade)
+  
+  //----
+  // INDEXES
+  //----
+  // spellchecker: ignore-next-line
+  @@index([broker_desk_client_id, created_at], map: "broker_desk_client_sessions_broker_desk_client_id_crea_d28c3c29")
+}
+
+/// Password-reset token issuance for portal client account recovery, storing
+/// a hashed single-use token that authorizes setting a new credential when
+/// the holder presents it before expiry.
+///
+/// Each row belongs to exactly one {@link broker_desk_clients} identity and
+/// records only the cryptographic digest of the emailed token, never the raw
+/// value. Redemption is bounded by an expiry deadline and permanently
+/// consumed on first successful use, so tokens cannot be replayed.
+///
+/// Responses never reveal whether the addressed email belongs to an existing
+/// portal client; issuance and consumption are handled exclusively by the
+/// authentication flows of {@link broker_desk_clients}, with no standalone
+/// management endpoints.
+///
+/// @namespace Actors
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_client_password_resets {
+  //----
+  // COLUMNS
+  //----
+  /// Primary key identifying an individual password-reset token issuance.
+  id String @id @db.Uuid
+  
+  /// Portal client identity whose password this token authorizes resetting.
+  ///
+  /// Exactly one {@link broker_desk_clients} row owns each reset issuance;
+  /// presenting a valid token within its validity window permits setting a new
+  /// credential on this client only.
+  broker_desk_client_id String @db.Uuid
+  
+  /// Cryptographic hash of the one-time reset token delivered to the client's
+  /// email address.
+  ///
+  /// Only the digest is persisted so raw tokens never appear in storage;
+  /// uniqueness guarantees every generated token maps to exactly one possible
+  /// redemption.
+  token_hash String
+  
+  /// Deadline after which the token is no longer redeemable.
+  ///
+  /// Reset presentations arriving later than this moment are refused and a
+  /// fresh token must be requested.
+  expires_at DateTime @db.Timestamptz
+  
+  /// Moment the token was successfully redeemed to set a new password,
+  /// remaining null until then.
+  ///
+  /// A non-null value permanently consumes the token, blocking any second use
+  /// even before expiry.
+  used_at DateTime? @db.Timestamptz
+  
+  /// Timestamp when the reset was requested and the token was issued.
+  created_at DateTime @db.Timestamptz
+  
+  /// Timestamp of the latest modification, currently limited to the
+  /// consumption event that sets used_at.
+  updated_at DateTime @db.Timestamptz
+  
+  //----
+  // BELONGED RELATIONS,
+  //   - format: (propertyKey targetModel constraint)
+  //----
+  client broker_desk_clients @relation(fields: [broker_desk_client_id], references: [id], onDelete: Cascade)
+  
+  //----
+  // INDEXES
+  //----
+  @@unique([token_hash])
+  // spellchecker: ignore-next-line
+  @@index([broker_desk_client_id, created_at], map: "broker_desk_client_password_resets_broker_desk_client__d3192473")
+}
+
+/// One-time verification tokens confirming a portal client's email address
+/// prior to first successful sign-in.
+///
+/// Each record pairs a single-use, time-limited token with one {@link
+/// broker_desk_clients} identity and the exact email address being proven.
+/// Sign-in remains refused until a valid token is confirmed, so
+/// portal-client provisioning issues a row up front and clients may request
+/// fresh rows whenever a previous token expires or goes unused. Rows are
+/// immutable once written apart from the confirmation stamp, and exhausted
+/// rows simply age out for routine cleanup.
+///
+/// @namespace Actors
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_client_email_verifications {
+  //----
+  // COLUMNS
+  //----
+  /// Primary Key.
+  id String @id @db.Uuid
+  
+  /// Portal client identity whose email address this verification confirms.
+  ///
+  /// Every token belongs to exactly one {@link broker_desk_clients} row, and
+  /// the relationship is intentionally non-unique so a client can accumulate
+  /// several verification attempts across provisioning retries, expired links,
+  /// or corrected addresses. Only the child side holds the reference; the
+  /// client table itself never points back into verification artifacts.
+  broker_desk_client_id String @db.Uuid
+  
+  /// Email address being confirmed by this verification attempt.
+  ///
+  /// Stored as an explicit snapshot rather than read live from the client
+  /// profile so the token keeps proving ownership of the address that was
+  /// originally targeted, even if the client's email changes before
+  /// confirmation completes.
+  email String
+  
+  /// Hashed form of the single-use verification token delivered inside the
+  /// emailed confirmation link.
+  ///
+  /// Only the digest is persisted so exposure of this table cannot reveal
+  /// usable verification links; the plaintext token exists solely within the
+  /// outbound message.
+  token_hash String
+  
+  /// Deadline after which the token is no longer acceptable.
+  ///
+  /// The short validity window enforces the time-limited nature of
+  /// confirmations; once this moment passes, a brand-new verification row must
+  /// be issued rather than reviving the old one.
+  expires_at DateTime @db.Timestamptz
+  
+  /// Moment the email address was successfully confirmed.
+  ///
+  /// Null while the token is still pending; set exactly once when the correct
+  /// token is presented, permanently consuming the row and preventing any
+  /// later replay.
+  verified_at DateTime? @db.Timestamptz
+  
+  /// When the verification token was issued to the client.
+  created_at DateTime @db.Timestamptz
+  
+  //----
+  // BELONGED RELATIONS,
+  //   - format: (propertyKey targetModel constraint)
+  //----
+  // spellchecker: ignore-next-line
+  client broker_desk_clients @relation(fields: [broker_desk_client_id], references: [id], onDelete: Cascade, map: "broker_desk_client_email_verifications_broker_desk_cli_2cfaa411")
+  
+  //----
+  // INDEXES
+  //----
+  @@unique([token_hash])
+  // spellchecker: ignore-next-line
+  @@index([broker_desk_client_id, created_at], map: "broker_desk_client_email_verifications_broker_desk_cli_b5b54ff1")
+  @@index([expires_at])
+}
+
+/// A provincial insurance licence held by a {@link broker_desk_producers}
+/// producer, recording the issuing jurisdiction, credential type, licence
+/// number, and validity window used to verify the producer's legal authority
+/// to sell insurance in that province.
+///
+/// Each row captures one provincial qualification: the issuing province code
+/// (ON/QC/AB/BC/...), the regulatory licence type such as RIBO, the
+/// government-assigned licence number, the issue date marking the start of
+/// validity, and the expiry date marking its end. A separate status field
+/// records the licence's regulatory standing so that suspensions or
+/// revocations remain visible even while the expiry date still lies in the
+/// future.
+///
+/// This table is the compliance-alert source for licence governance: expired
+/// and soon-expiring conditions are detected by comparing expiry dates
+/// against the current date and surfaced as flags feeding notifications and
+/// admin dashboards, ensuring producers without valid provincial credentials
+/// are identified before they quote or bind business in that jurisdiction.
+/// Administrators and CSRs maintain these records on behalf of producers,
+/// and each producer sees the licences qualifying their own book.
+///
+/// @namespace Actors
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_producer_licences {
+  //----
+  // COLUMNS
+  //----
+  /// Primary Key.
+  id String @id @db.Uuid
+  
+  /// Reference to the {@link broker_desk_producers} account holding this
+  /// provincial licence.
+  ///
+  /// Every licence belongs to exactly one producer. The relationship scopes
+  /// licence maintenance (administrators and CSRs manage the roster of staff
+  /// qualifications) and lets a producer review the credentials qualifying
+  /// their own book of business.
+  broker_desk_producer_id String @db.Uuid
+  
+  /// Canadian province or territory code where the licence was issued, such as
+  /// ON, QC, AB, or BC.
+  ///
+  /// Drives jurisdiction checks when quoting or writing business in a given
+  /// province and groups licence maintenance by region.
+  province_code String
+  
+  /// Regulatory classification of the credential, such as RIBO (Registered
+  /// Insurance Brokers of Ontario) or the equivalent licence class of another
+  /// province.
+  ///
+  /// Distinguishes which kinds of insurance activity the producer is
+  /// authorized to perform within the issuing jurisdiction.
+  licence_type String
+  
+  /// Government-assigned identifier printed on the licence document.
+  ///
+  /// Used for verification against regulator registries and displayed during
+  /// compliance reviews; uniqueness is enforced jointly with the holder,
+  /// province, and licence type.
+  licence_number String
+  
+  /// Date the regulator issued the licence.
+  ///
+  /// Marks the beginning of the credential's validity period and provides
+  /// issuance provenance during audits.
+  issue_date DateTime @db.Timestamptz
+  
+  /// Date after which the licence is no longer valid unless renewed.
+  ///
+  /// Primary input to compliance scanning: values approaching the current date
+  /// trigger soon-expiring notifications, and lapsed values surface
+  /// expired-licence flags on admin dashboards.
+  expiry_date DateTime @db.Timestamptz
+  
+  /// Current regulatory standing of the licence, such as active, suspended, or
+  /// revoked.
+  ///
+  /// Complements the expiry date because a licence can become invalid before
+  /// expiring through suspension or voluntary surrender; compliance views
+  /// filter on this value together with expiry proximity.
+  status String
+  
+  /// Timestamp when this licence record was created.
+  created_at DateTime @db.Timestamptz
+  
+  /// Timestamp of the most recent update to this licence record, including
+  /// renewals that extend the validity window.
+  updated_at DateTime @db.Timestamptz
+  
+  /// Soft-delete timestamp; set when a licence record is withdrawn from view
+  /// while remaining available for historical compliance auditing.
+  deleted_at DateTime? @db.Timestamptz
+  
+  //----
+  // BELONGED RELATIONS,
+  //   - format: (propertyKey targetModel constraint)
+  //----
+  producer broker_desk_producers @relation(fields: [broker_desk_producer_id], references: [id], onDelete: Cascade)
+  
+  //----
+  // INDEXES
+  //----
+  // spellchecker: ignore-next-line
+  @@unique([broker_desk_producer_id, province_code, licence_type], map: "broker_desk_producer_licences_broker_desk_producer_id__c7dc0542")
+  @@index([status, expiry_date])
+}

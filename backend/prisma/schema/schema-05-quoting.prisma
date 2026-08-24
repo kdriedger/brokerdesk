@@ -1,0 +1,764 @@
+/// Producer-owned pre-sale quotations presenting comparative insurance
+/// options to an organization client, carrying the desired coverage start
+/// date, quote expiry, notes, CAD money totals, soft deletion, and the
+/// draft/priced/submitted/bound/declined/expired status workflow.
+///
+/// Each {@link broker_desk_quotes} record is the aggregate root of the
+/// pre-sale pipeline for exactly one {@link broker_desk_organizations}
+/// tenant, is prepared for a specific {@link broker_desk_clients} prospect,
+/// and is owned by one {@link broker_desk_producers} salesperson whose book
+/// of business it belongs to.
+///
+/// Comparative carrier and product options are enumerated in {@link
+/// broker_desk_quote_lines}, while manual out-of-band carrier tracking is
+/// recorded in {@link broker_desk_submissions}. Binding the accepted line
+/// transactionally converts this quote into a policy whose origin columns
+/// link back to this record.
+///
+/// @namespace Quoting
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_quotes {
+  //----
+  // COLUMNS
+  //----
+  /// Primary key of the quotation record.
+  id String @id @db.Uuid
+  
+  /// Reference to the brokerage tenant that owns this quotation.
+  ///
+  /// Every business record in BrokerDesk belongs to exactly one {@link
+  /// broker_desk_organizations}; this column enforces tenant isolation so
+  /// quote listings, searches, status transitions, and binding actions never
+  /// cross brokerage boundaries.
+  broker_desk_organization_id String @db.Uuid
+  
+  /// Reference to the client this quotation was prepared for.
+  ///
+  /// Quotes always target a specific {@link broker_desk_clients} profile
+  /// inside the owning organization; the client province, type, and language
+  /// feed product eligibility validation on attached lines, and quote activity
+  /// surfaces on the client timeline.
+  broker_desk_client_id String @db.Uuid
+  
+  /// Reference to the producing staff member who owns this quotation.
+  ///
+  /// A quote belongs to the book of business of exactly one {@link
+  /// broker_desk_producers} account; that producer drives pricing and carrier
+  /// submissions, and commission estimates recorded on quote lines anticipate
+  /// this producer's future split.
+  broker_desk_producer_id String @db.Uuid
+  
+  /// Current workflow state of the quotation.
+  ///
+  /// Holds one of the lifecycle values draft, priced, submitted, bound,
+  /// declined, or expired. Transitions follow the mandated flow draft ->
+  /// priced -> submitted -> bound | declined | expired and gate the binding
+  /// action.
+  status String
+  
+  /// Coverage commencement date the client wants the eventual policy to start
+  /// on.
+  ///
+  /// May remain undetermined while the quote is still a draft; once known it
+  /// anchors pricing and becomes the reference carried onto the policy created
+  /// when the quote binds.
+  desired_effective_date DateTime? @db.Timestamptz
+  
+  /// Moment after which this quotation is no longer valid for acceptance or
+  /// binding.
+  ///
+  /// Set when the quote leaves draft status; after this moment without a bound
+  /// outcome the quote moves toward expired status and continued pursuit
+  /// starts a fresh quotation.
+  expires_at DateTime @db.Timestamptz
+  
+  /// Free-form remarks captured by staff about the quotation context, client
+  /// preferences, or negotiation history.
+  ///
+  /// Informational only and never included in carrier-facing payloads.
+  notes String?
+  
+  /// Summed base premium across the quote's comparative lines in Canadian
+  /// dollars at two-decimal precision (decimal(12,2)).
+  ///
+  /// Excludes broker fees and taxes, which carry their own columns; zero while
+  /// the quote is still a draft with no priced lines.
+  total_premium_cad Float @db.DoublePrecision
+  
+  /// Total brokerage service fee charged on top of premiums for this quotation
+  /// in Canadian dollars at two-decimal precision (decimal(12,2)).
+  ///
+  /// Broker fees are explicit and taxable per provincial rules using the
+  /// organization's configurable tax rate table.
+  total_broker_fee_cad Float @db.DoublePrecision
+  
+  /// Aggregate sales-tax amount (GST, HST, or QST as applicable to the risk
+  /// province) calculated over premium and broker fee amounts in Canadian
+  /// dollars at two-decimal precision (decimal(12,2)).
+  ///
+  /// Rates resolve from the owning organization settings tax rate table seeded
+  /// with Ontario HST 13 percent as default.
+  tax_amount_cad Float @db.DoublePrecision
+  
+  /// Client-presented payable total combining premium, broker fee, and tax
+  /// amounts in Canadian dollars at two-decimal precision (decimal(12,2)).
+  ///
+  /// Anchors proposal document rendering and sets billing expectations once
+  /// the quote binds.
+  grand_total_cad Float @db.DoublePrecision
+  
+  /// Timestamp when the quotation record was first saved.
+  ///
+  /// Orders quotes chronologically within client timelines and producer
+  /// pipelines.
+  created_at DateTime @db.Timestamptz
+  
+  /// Timestamp of the most recent modification.
+  ///
+  /// Refreshed on every status transition, line adjustment, or totals
+  /// recalculation.
+  updated_at DateTime @db.Timestamptz
+  
+  /// Soft-delete timestamp marking the quotation as removed while preserving
+  /// its rows for audit history and bound-policy lineage.
+  ///
+  /// Null while active; deletion sets this value instead of physically
+  /// removing the record.
+  deleted_at DateTime? @db.Timestamptz
+  
+  //----
+  // BELONGED RELATIONS,
+  //   - format: (propertyKey targetModel constraint)
+  //----
+  organization broker_desk_organizations @relation(fields: [broker_desk_organization_id], references: [id], onDelete: Cascade)
+  client broker_desk_clients @relation(fields: [broker_desk_client_id], references: [id], onDelete: Cascade)
+  producer broker_desk_producers @relation(fields: [broker_desk_producer_id], references: [id], onDelete: Cascade)
+  
+  //----
+  // HAS RELATIONS
+  //   - format: (propertyKey targetModel)
+  //----
+  lines broker_desk_quote_lines[]
+  submissions broker_desk_submissions[]
+  boundPolicies broker_desk_policies[]
+  documents broker_desk_document_quote_owners[]
+  
+  //----
+  // INDEXES
+  //----
+  @@index([broker_desk_organization_id, status])
+  @@index([broker_desk_client_id, created_at])
+  @@index([broker_desk_producer_id, status])
+  @@index([status, expires_at])
+}
+
+/// Comparative product-option line within a {@link broker_desk_quotes
+/// quote}, capturing one carrier-product proposal for side-by-side
+/// comparison.
+///
+/// Each line pairs a catalogue {@link broker_desk_products product} with
+/// frozen carrier name and code snapshot strings, the coverage options
+/// selected from the product's coverage catalog, and the risk-question
+/// answers that produced its rating. Money figures — premium, broker fee,
+/// taxes, and commission estimate — are populated when the parent quote is
+/// priced, and an accepted flag identifies which line became the binding
+/// basis when the quote transitions to bound into a policy.
+///
+/// Lines are managed exclusively through their owning quote: producers
+/// assemble and compare lines across multiple carriers on one quote,
+/// submissions track out-of-band carrier responses per courted carrier, and
+/// the bind action promotes exactly one accepted line into a policy
+/// transactionally.
+///
+/// @namespace Quoting
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_quote_lines {
+  //----
+  // COLUMNS
+  //----
+  /// Primary Key.
+  id String @id @db.Uuid
+  
+  /// Owning quotation that groups this comparison line.
+  ///
+  /// Every quote line belongs to exactly one {@link broker_desk_quotes quote};
+  /// lines are created, compared, priced, and bound exclusively within their
+  /// parent quote's lifecycle, inheriting the quote's client and organization
+  /// scoping for tenant isolation.
+  broker_desk_quote_id String @db.Uuid
+  
+  /// Catalogue product offered under this comparative option.
+  ///
+  /// References the {@link broker_desk_products} entry the producer attached
+  /// while assembling the quote; the product's eligibility rules govern
+  /// whether it may be quoted, and its rating schema governs the shape of
+  /// rating_inputs.
+  broker_desk_product_id String @db.Uuid
+  
+  /// Frozen display name of the carrier backing this option, captured at
+  /// quoting time.
+  ///
+  /// Stored deliberately as a snapshot string rather than a foreign key so
+  /// subsequent carrier renames, deactivations, or catalogue edits in {@link
+  /// broker_desk_carriers} can never distort issued proposals or the audit
+  /// trail of what was compared.
+  carrier_name_snapshot String
+  
+  /// Frozen short code of the carrier backing this option, captured at quoting
+  /// time.
+  ///
+  /// Pairs with carrier_name_snapshot to give proposals a stable
+  /// machine-readable carrier identifier independent of live {@link
+  /// broker_desk_carriers} catalogue state.
+  carrier_code_snapshot String
+  
+  /// JSON document recording the coverage options selected for this line.
+  ///
+  /// Stores limits, deductibles, and optional-flag choices drawn from the
+  /// product's {@link broker_desk_coverage_items} catalog as an explicitly
+  /// requested JSON structure, preserving exactly which coverages were offered
+  /// on this comparative option; mirrored into {@link
+  /// broker_desk_policy_coverages} when the line binds into a policy.
+  coverage_selections String
+  
+  /// JSON document of risk-question answers used to rate this line.
+  ///
+  /// Conforms to the rating-schema JSON published on the referenced {@link
+  /// broker_desk_products} entry; retained verbatim so any premium recorded on
+  /// this line can be reproduced and audited against the exact inputs that
+  /// produced it.
+  rating_inputs String
+  
+  /// CAD term premium quoted for this option once rated.
+  ///
+  /// Null while the line sits unpriced in a draft quote; populated by the
+  /// rating engine as the parent {@link broker_desk_quotes quote} transitions
+  /// from draft to priced, and summed into its totalPremiumCad.
+  premium_cad Float? @db.DoublePrecision
+  
+  /// CAD brokerage fee charged on top of the premium for this option.
+  ///
+  /// Null until priced; taxable per provincial rules using the organization
+  /// settings tax-rate table, and rolled into the parent quote's
+  /// totalBrokerFeeCad.
+  broker_fee_cad Float? @db.DoublePrecision
+  
+  /// CAD tax amount computed on this option's premium and broker fee.
+  ///
+  /// Derived from the organization settings tax-rate table applicable to the
+  /// client's province (e.g. Ontario HST 13%); null until priced, then summed
+  /// into the parent quote's taxAmountCad.
+  tax_amount_cad Float? @db.DoublePrecision
+  
+  /// CAD commission estimate seeded for this option from the product's
+  /// commission schedule.
+  ///
+  /// Applies the {@link broker_desk_commission_schedules} agency rate percent
+  /// and producer split percent (including tier tables where configured) to
+  /// the priced premium; remains an estimate only — realized commissions are
+  /// recorded in {@link broker_desk_commissions} after bind.
+  commission_estimate_cad Float? @db.DoublePrecision
+  
+  /// Flag marking this line as the accepted binding basis of its quote.
+  ///
+  /// When the owning producer binds a {@link broker_desk_quotes quote} into a
+  /// policy, the binding service sets accepted on the chosen line and clears
+  /// it on sibling lines, keeping exactly one accepted line per quote under
+  /// application-enforced integrity.
+  accepted Boolean
+  
+  /// Timestamp when this comparative line was added to its quote.
+  created_at DateTime @db.Timestamptz
+  
+  /// Timestamp of the most recent modification to this line, such as
+  /// re-rating, repricing, or acceptance toggling.
+  updated_at DateTime @db.Timestamptz
+  
+  //----
+  // BELONGED RELATIONS,
+  //   - format: (propertyKey targetModel constraint)
+  //----
+  quote broker_desk_quotes @relation(fields: [broker_desk_quote_id], references: [id], onDelete: Cascade)
+  product broker_desk_products @relation(fields: [broker_desk_product_id], references: [id], onDelete: Cascade)
+  
+  //----
+  // HAS RELATIONS
+  //   - format: (propertyKey targetModel)
+  //----
+  boundPolicies broker_desk_policies[]
+  
+  //----
+  // INDEXES
+  //----
+  @@index([broker_desk_product_id])
+  @@index([broker_desk_quote_id, accepted])
+}
+
+/// Out-of-band submission tracking record pairing a {@link
+/// broker_desk_quotes} with one courted {@link broker_desk_carriers},
+/// following the manual request-for-quotation exchanges brokerage staff
+/// conduct with insurers outside the platform.
+///
+/// A composite unique constraint on the quote and carrier foreign keys
+/// guarantees at most one submission per carrier per quote, so each
+/// comparative quote line maps to at most a single courtship thread with any
+/// given insurer. The status field advances through pending | sent |
+/// acknowledged | quoted | declined as the exchange unfolds, and every
+/// status change raises a {@link broker_desk_notifications} entry for
+/// interested staff.
+///
+/// Tracking details preserve the operational trail: sent_at marks dispatch
+/// to the carrier, responded_at marks the carrier's latest substantive
+/// response, and carrier_reference_number retains the insurer-assigned file
+/// number once known. Free-form internal remarks live in the atomic notes
+/// column, while individual conversation turns are normalized into {@link
+/// broker_desk_submission_messages} so each message remains a discrete,
+/// time-stamped row.
+///
+/// Submissions inherit their fate from the owning quote — the quote's own
+/// soft-delete horizon governs visibility — so this table keeps no separate
+/// deletion flag, only the standard created_at and updated_at stamps.
+///
+/// @namespace Quoting
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_submissions {
+  //----
+  // COLUMNS
+  //----
+  /// Primary Key.
+  id String @id @db.Uuid
+  
+  /// Reference to the {@link broker_desk_quotes} record this submission
+  /// belongs to.
+  ///
+  /// Every submission is filed against exactly one producer-owned quote;
+  /// hiding or soft-deleting the quote likewise removes its submissions from
+  /// active view. Combined with carrier_id under a unique constraint, this
+  /// enforces the business rule that a quote courts any given carrier through
+  /// at most one submission.
+  broker_desk_quote_id String @db.Uuid
+  
+  /// Reference to the {@link broker_desk_carriers} catalogue entry courted by
+  /// this submission.
+  ///
+  /// Identifies which insurer the quote was shopped to out of band.
+  /// Deactivated carriers keep their historical submissions intact, so the
+  /// reference is retained rather than removed when a carrier leaves future
+  /// selection.
+  carrier_id String @db.Uuid
+  
+  /// Current stage of the out-of-band carrier courtship workflow.
+  ///
+  /// Holds exactly one of pending | sent | acknowledged | quoted | declined:
+  /// pending marks a planned contact not yet dispatched, sent records a
+  /// transmitted request, acknowledged confirms the carrier picked the case
+  /// up, quoted means pricing came back, and declined closes the pursuit. Each
+  /// transition raises a notification to interested staff through {@link
+  /// broker_desk_notifications}.
+  status String
+  
+  /// File or reference number the carrier assigns to this submission once it
+  /// acknowledges the case.
+  ///
+  /// Null until the insurer issues its own identifier; preserved afterwards so
+  /// staff can cite the carrier-side file during follow-ups.
+  carrier_reference_number String?
+  
+  /// Free-form internal remarks summarizing the state of the exchange with the
+  /// carrier.
+  ///
+  /// Kept as a single atomic value, deliberately separate from the structured
+  /// conversation log stored in {@link broker_desk_submission_messages}.
+  notes String?
+  
+  /// Moment the submission was dispatched to the carrier.
+  ///
+  /// Null while the submission is merely planned and set once staff transmit
+  /// the request out of band; drives aging reports on unanswered courtships
+  /// together with responded_at.
+  sent_at DateTime? @db.Timestamptz
+  
+  /// Moment of the carrier's most recent substantive response, such as an
+  /// acknowledgement, a returned quotation, or a declination.
+  ///
+  /// Null until the carrier first replies; each subsequent response refreshes
+  /// the stamp to reflect the latest contact.
+  responded_at DateTime? @db.Timestamptz
+  
+  /// Creation timestamp of the submission record.
+  created_at DateTime @db.Timestamptz
+  
+  /// Last modification timestamp, refreshed whenever the status, reference
+  /// number, notes, or response tracking change.
+  updated_at DateTime @db.Timestamptz
+  
+  //----
+  // BELONGED RELATIONS,
+  //   - format: (propertyKey targetModel constraint)
+  //----
+  quote broker_desk_quotes @relation(fields: [broker_desk_quote_id], references: [id], onDelete: Cascade)
+  carrier broker_desk_carriers @relation(fields: [carrier_id], references: [id], onDelete: Cascade)
+  
+  //----
+  // HAS RELATIONS
+  //   - format: (propertyKey targetModel)
+  //----
+  messages broker_desk_submission_messages[]
+  
+  //----
+  // INDEXES
+  //----
+  @@index([carrier_id])
+  @@unique([broker_desk_quote_id, carrier_id])
+  @@index([status, created_at])
+}
+
+/// Individual conversation-log entry exchanged between brokerage staff and
+/// an insurance carrier regarding a {@link broker_desk_submissions} record,
+/// capturing direction, channel, body, occurrence time, and the staff member
+/// who logged it.
+///
+/// Each row represents one discrete message or call note in the carrier
+/// correspondence thread attached to a submission. The direction field
+/// distinguishes outbound communications sent by brokerage staff from
+/// inbound responses received from the carrier, while channel records how
+/// the exchange took place such as email, phone, portal, mail, or fax.
+///
+/// occurred_at is stored separately from created_at because staff frequently
+/// log conversations after the fact; created_at reflects when the entry was
+/// recorded in {@link broker_desk}, while occurred_at preserves the true
+/// exchange moment used for chronological thread ordering within a
+/// submission's negotiation trail.
+///
+/// Attribution of the logging staff member follows the project-wide subtype
+/// pattern used by activities, tasks, audit logs, and document versions:
+/// exactly one of the sibling one-to-one rows in {@link
+/// broker_desk_submission_message_of_admins}, {@link
+/// broker_desk_submission_message_of_producers}, or {@link
+/// broker_desk_submission_message_of_csrs} names the administrator,
+/// producer, or customer service representative who filed this entry.
+///
+/// Rows are managed strictly within their parent submission context
+/// (subsidiary stance); soft deletion via deleted_at removes erroneous log
+/// entries without breaking the surrounding thread history.
+///
+/// @namespace Quoting
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_submission_messages {
+  //----
+  // COLUMNS
+  //----
+  /// Primary key uniquely identifying this carrier-conversation log entry.
+  id String @id @db.Uuid
+  
+  /// Parent {@link broker_desk_submissions} record whose carrier conversation
+  /// thread this message belongs to.
+  ///
+  /// Every message is filed against exactly one submission; submissions carry
+  /// their message history along, preserving the complete negotiation trail
+  /// recorded against each courted carrier.
+  broker_desk_submission_id String @db.Uuid
+  
+  /// Direction of the exchange: outbound when brokerage staff initiated
+  /// contact with the carrier, inbound when the carrier responded.
+  direction String
+  
+  /// Medium through which the exchange occurred, such as email, phone, portal,
+  /// mail, or fax, giving context for response-time expectations on the
+  /// submission.
+  channel String
+  
+  /// Message text or conversation notes as exchanged with the carrier,
+  /// including any quoted terms, questions asked, or clarifications received.
+  body String
+  
+  /// Actual date and time the exchange took place, independent of created_at
+  /// which records when staff logged it; drives chronological ordering of the
+  /// conversation thread.
+  occurred_at DateTime @db.Timestamptz
+  
+  /// Timestamp when this log entry was recorded in the system; may differ from
+  /// occurred_at due to retrospective logging.
+  created_at DateTime @db.Timestamptz
+  
+  /// Timestamp of the last correction applied to this log entry.
+  updated_at DateTime @db.Timestamptz
+  
+  /// Soft-delete timestamp hiding erroneous or retracted log entries while
+  /// retaining the audit trail.
+  deleted_at DateTime? @db.Timestamptz
+  
+  //----
+  // BELONGED RELATIONS,
+  //   - format: (propertyKey targetModel constraint)
+  //----
+  submission broker_desk_submissions @relation(fields: [broker_desk_submission_id], references: [id], onDelete: Cascade)
+  
+  //----
+  // HAS RELATIONS
+  //   - format: (propertyKey targetModel)
+  //----
+  adminAttribution broker_desk_submission_message_of_admins?
+  producerAttribution broker_desk_submission_message_of_producers?
+  ofCsr broker_desk_submission_message_of_csrs?
+  
+  //----
+  // INDEXES
+  //----
+  // spellchecker: ignore-next-line
+  @@index([broker_desk_submission_id, occurred_at], map: "broker_desk_submission_messages_broker_desk_submission_1d5780bc")
+}
+
+/// Administrator-attribution record fixing each carrier-submission
+/// conversation entry to the {@link broker_desk_admins} account and {@link
+/// broker_desk_admin_sessions} sign-in session that logged it.
+///
+/// Exactly one row exists per administrator-authored {@link
+/// broker_desk_submission_messages} entry, enforced by the uniqueness of the
+/// message foreign key; entries written by producers or customer service
+/// representatives are attributed through their parallel subtype tables
+/// ({@link broker_desk_submission_message_of_producers}, {@link
+/// broker_desk_submission_message_of_csrs}), keeping actor-specific identity
+/// and session mechanics separated rather than stacking multiple nullable
+/// actor references on the shared message.
+///
+/// The admin foreign key identifies who spoke, while the session reference
+/// preserves the authenticated context of the action for security review,
+/// letting auditors trace any submission conversation entry back to the
+/// precise login through which it was written. Rows are immutable once
+/// written and therefore carry only a creation timestamp, mirroring the
+/// append-only character of the underlying message log.
+///
+/// @namespace Quoting
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_submission_message_of_admins {
+  //----
+  // COLUMNS
+  //----
+  /// Primary key of the administrator attribution row.
+  id String @id @db.Uuid
+  
+  /// Carrier-conversation entry being attributed to its administrator author.
+  ///
+  /// Establishes a strict one-to-one relationship with {@link
+  /// broker_desk_submission_messages}: uniqueness of this foreign key
+  /// guarantees a submission message carries at most one administrator
+  /// attribution row, so reading the authorship of an admin-authored entry
+  /// never requires disambiguation. Entries logged by producer or CSR actors
+  /// are attributed in their sibling subtype tables instead.
+  broker_desk_submission_message_id String @db.Uuid
+  
+  /// Administrator ({@link broker_desk_admins}) who wrote the linked {@link
+  /// broker_desk_submission_messages} entry.
+  ///
+  /// Provides permanent staff attribution that survives later role changes,
+  /// deactivation, or password resets, allowing reviewers to enumerate every
+  /// carrier communication a given administrator recorded during quote
+  /// pursuit.
+  broker_desk_admin_id String @db.Uuid
+  
+  /// Sign-in session ({@link broker_desk_admin_sessions}) under which the
+  /// administrator logged the message.
+  ///
+  /// Preserves the authenticated device context held by the session — IP
+  /// address, access href, referrer, and expiry metadata — so security
+  /// investigations can confirm precisely which authenticated connection
+  /// produced the carrier correspondence.
+  broker_desk_admin_session_id String @db.Uuid
+  
+  /// Moment the attribution linkage was written.
+  ///
+  /// Because attribution rows are append-only, this timestamp equals the
+  /// instant the administrator-authored message was bound to its author and
+  /// session, and it is never revised afterward.
+  created_at DateTime @db.Timestamptz
+  
+  //----
+  // BELONGED RELATIONS,
+  //   - format: (propertyKey targetModel constraint)
+  //----
+  // spellchecker: ignore-next-line
+  submissionMessage broker_desk_submission_messages @relation(fields: [broker_desk_submission_message_id], references: [id], onDelete: Cascade, map: "broker_desk_submission_message_of_admins_broker_desk_s_5eea4fce")
+  // spellchecker: ignore-next-line
+  admin broker_desk_admins @relation(fields: [broker_desk_admin_id], references: [id], onDelete: Cascade, map: "broker_desk_submission_message_of_admins_broker_desk_a_dbb7f613")
+  // spellchecker: ignore-next-line
+  session broker_desk_admin_sessions @relation(fields: [broker_desk_admin_session_id], references: [id], onDelete: Cascade, map: "broker_desk_submission_message_of_admins_broker_desk_a_530e07c9")
+  
+  //----
+  // INDEXES
+  //----
+  // spellchecker: ignore-next-line
+  @@unique([broker_desk_submission_message_id], map: "broker_desk_submission_message_of_admins_broker_desk_s_694d72ec")
+  // spellchecker: ignore-next-line
+  @@index([broker_desk_admin_session_id], map: "broker_desk_submission_message_of_admins_broker_desk_a_b5484064")
+  // spellchecker: ignore-next-line
+  @@index([broker_desk_admin_id, created_at], map: "broker_desk_submission_message_of_admins_broker_desk_a_76fb8dc1")
+}
+
+/// Producer-side attribution record fixing a {@link
+/// broker_desk_submission_messages} conversation-log entry to the {@link
+/// broker_desk_producers} account and the {@link
+/// broker_desk_producer_sessions} sign-in session that logged it.
+///
+/// When brokerage staff exchange correspondence with a carrier about a
+/// {@link broker_desk_submissions} submission, exactly one attribution row
+/// certifies who recorded the message. Staff span three actor families
+/// (administrators, producers, customer service representatives), and each
+/// owns a dedicated attribution table — this one covers producers — so
+/// {@link broker_desk_submission_messages} never carries nullable
+/// role-specific foreign keys.
+///
+/// A unique constraint on the message foreign key enforces strict one-to-one
+/// cardinality: every producer-logged message holds at most one attribution
+/// row. Rows are written once at logging time and remain immutable
+/// thereafter, preserving a permanent accountability trail for
+/// producer-authored carrier communications.
+///
+/// @namespace Quoting
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_submission_message_of_producers {
+  //----
+  // COLUMNS
+  //----
+  /// Primary key of the producer attribution record.
+  id String @id @db.Uuid
+  
+  /// Reference to the {@link broker_desk_submission_messages} entry whose
+  /// authorship this record certifies.
+  ///
+  /// The accompanying unique index makes the relationship strictly one-to-one,
+  /// letting services resolve the logger identity directly instead of
+  /// maintaining nullable polymorphic columns on the message row.
+  broker_desk_submission_message_id String @db.Uuid
+  
+  /// Reference to the {@link broker_desk_producers} sales-broker account that
+  /// logged the submission message.
+  ///
+  /// Provides durable staff identity for accountability independent of session
+  /// lifetime, enabling producers to browse their own carrier-correspondence
+  /// history and administrators to attribute submissions activity per
+  /// producer.
+  broker_desk_producer_id String @db.Uuid
+  
+  /// Reference to the {@link broker_desk_producer_sessions} JWT session that
+  /// was active when the message was logged.
+  ///
+  /// Captures the exact authentication context — device fingerprint and issued
+  /// tokens — under which the correspondence entered the system, supporting
+  /// forensic review alongside the organization-level audit trail.
+  broker_desk_producer_session_id String @db.Uuid
+  
+  /// Timestamp recording when the producer logged the submission message and
+  /// this attribution row was written.
+  ///
+  /// Immutable once set because attribution rows are append-only; doubles as
+  /// the sort key when listing a producer's carrier correspondence
+  /// chronologically.
+  created_at DateTime @db.Timestamptz
+  
+  //----
+  // BELONGED RELATIONS,
+  //   - format: (propertyKey targetModel constraint)
+  //----
+  // spellchecker: ignore-next-line
+  submissionMessage broker_desk_submission_messages @relation(fields: [broker_desk_submission_message_id], references: [id], onDelete: Cascade, map: "broker_desk_submission_message_of_producers_broker_des_15d6f876")
+  // spellchecker: ignore-next-line
+  producer broker_desk_producers @relation(fields: [broker_desk_producer_id], references: [id], onDelete: Cascade, map: "broker_desk_submission_message_of_producers_broker_des_998d4f31")
+  // spellchecker: ignore-next-line
+  producerSession broker_desk_producer_sessions @relation(fields: [broker_desk_producer_session_id], references: [id], onDelete: Cascade, map: "broker_desk_submission_message_of_producers_broker_des_db427f81")
+  
+  //----
+  // INDEXES
+  //----
+  // spellchecker: ignore-next-line
+  @@index([broker_desk_producer_session_id], map: "broker_desk_submission_message_of_producers_broker_des_1046461d")
+  // spellchecker: ignore-next-line
+  @@unique([broker_desk_submission_message_id], map: "broker_desk_submission_message_of_producers_broker_des_8ee22860")
+  // spellchecker: ignore-next-line
+  @@index([broker_desk_producer_id, created_at], map: "broker_desk_submission_message_of_producers_broker_des_9c9c6756")
+}
+
+/// One-to-one attribution record fixing each {@link
+/// broker_desk_submission_messages} conversation entry to the {@link
+/// broker_desk_csrs} customer service representative who logged it and the
+/// {@link broker_desk_csr_sessions} sign-in session in force at logging
+/// time.
+///
+/// Submission conversation entries on a quote's carrier submission can be
+/// authored by admins, producers, or CSRs, so authorship is resolved through
+/// dedicated attribution rows rather than multiple nullable actor foreign
+/// keys on the message itself. Exactly one such row exists per CSR-authored
+/// message, enforced by a unique constraint on the message foreign key; the
+/// companion tables broker_desk_submission_message_of_admins and
+/// broker_desk_submission_message_of_producers cover the remaining staff
+/// types.
+///
+/// Rows are immutable once written: they preserve permanent staff
+/// accountability for carrier-facing correspondence and strengthen the
+/// security audit trail by tying every entry to both an accountable account
+/// and the authenticated session that produced it.
+///
+/// @namespace Quoting
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_submission_message_of_csrs {
+  //----
+  // COLUMNS
+  //----
+  /// Primary Key.
+  id String @id @db.Uuid
+  
+  /// Reference to the {@link broker_desk_submission_messages} entry attributed
+  /// to a CSR.
+  ///
+  /// Unique and mandatory so every CSR-authored conversation entry carries
+  /// exactly one attribution row and a single message can never be
+  /// double-attributed; combined with the admin and producer sibling
+  /// attribution tables this realizes polymorphic logger resolution without
+  /// nullable actor foreign keys on the message.
+  broker_desk_submission_message_id String @db.Uuid
+  
+  /// Reference to the {@link broker_desk_csrs} representative who recorded the
+  /// submission conversation entry.
+  ///
+  /// Establishes the one-to-many relationship in which a single CSR logs many
+  /// submission messages over time, giving permanent staff attribution for
+  /// agency-wide servicing work such as endorsement processing and
+  /// coordination with carriers.
+  broker_desk_csr_id String @db.Uuid
+  
+  /// Reference to the {@link broker_desk_csr_sessions} sign-in session active
+  /// when the message was logged.
+  ///
+  /// Ties the attribution to an authenticated device context carrying IP,
+  /// href, and referrer data rather than merely an account, reinforcing
+  /// tenant-scoped accountability for carrier communication.
+  broker_desk_csr_session_id String @db.Uuid
+  
+  /// Timestamp when the attribution row was written, coinciding with the
+  /// moment the submission message was logged.
+  ///
+  /// The row is immutable once written, so no updated_at or deleted_at exists;
+  /// corrections occur through new conversation entries rather than edits to
+  /// past ones.
+  created_at DateTime @db.Timestamptz
+  
+  //----
+  // BELONGED RELATIONS,
+  //   - format: (propertyKey targetModel constraint)
+  //----
+  // spellchecker: ignore-next-line
+  submissionMessage broker_desk_submission_messages @relation(fields: [broker_desk_submission_message_id], references: [id], onDelete: Cascade, map: "broker_desk_submission_message_of_csrs_broker_desk_sub_b91ebbfe")
+  csr broker_desk_csrs @relation(fields: [broker_desk_csr_id], references: [id], onDelete: Cascade)
+  // spellchecker: ignore-next-line
+  session broker_desk_csr_sessions @relation(fields: [broker_desk_csr_session_id], references: [id], onDelete: Cascade, map: "broker_desk_submission_message_of_csrs_broker_desk_csr_9ba8302a")
+  
+  //----
+  // INDEXES
+  //----
+  // spellchecker: ignore-next-line
+  @@index([broker_desk_csr_session_id], map: "broker_desk_submission_message_of_csrs_broker_desk_csr_d4ae72ed")
+  // spellchecker: ignore-next-line
+  @@unique([broker_desk_submission_message_id], map: "broker_desk_submission_message_of_csrs_broker_desk_sub_67e49874")
+  // spellchecker: ignore-next-line
+  @@index([broker_desk_csr_id, created_at], map: "broker_desk_submission_message_of_csrs_broker_desk_csr_7a897bb6")
+}

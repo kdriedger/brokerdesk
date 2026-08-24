@@ -1,0 +1,928 @@
+/// {@link broker_desk_document_templates} is each organization's reusable
+/// branded wording library from which client-facing paperwork is produced:
+/// quote proposals, policy schedules, certificates of insurance (COI),
+/// invoices, and custom letters.
+///
+/// Each template belongs to exactly one {@link broker_desk_organizations}
+/// tenant and carries a kind classification (quote_proposal |
+/// policy_schedule | coi | certificate | invoice | custom), a display name
+/// unique within its organization and kind, and a markdown/HTML body
+/// embedding {{variable}} placeholders that the render flow substitutes with
+/// entity data. An en/fr locale marks the intended language so bilingual
+/// brokerages can maintain parallel wordings.
+///
+/// Lifecycle is governed by the retired flag: retiring removes a template
+/// from future selection while historical {@link broker_desk_documents} keep
+/// the rendered content they were produced with. Creation, revision, and
+/// retirement are reserved to {@link broker_desk_admins}; the authoring
+/// administrator is recorded for accountability.
+///
+/// @namespace Document
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_document_templates {
+  //----
+  // COLUMNS
+  //----
+  /// Primary Key.
+  id String @id @db.Uuid
+  
+  /// Organization this template library entry belongs to.
+  ///
+  /// Every template is scoped to exactly one {@link broker_desk_organizations}
+  /// brokerage so wording libraries never leak across tenants; together with
+  /// kind and name it forms the uniqueness boundary of the library.
+  broker_desk_organization_id String @db.Uuid
+  
+  /// Administrator who authored this template.
+  ///
+  /// Template governance - creation, revision, and retirement - is exclusive
+  /// to {@link broker_desk_admins}; this reference records which administrator
+  /// introduced the wording for accountability and audit follow-up.
+  broker_desk_admin_id String @db.Uuid
+  
+  /// Category of paperwork this template produces.
+  ///
+  /// One of quote_proposal, policy_schedule, coi (certificate of insurance),
+  /// certificate, invoice, or custom; determines which render flow and
+  /// placeholder variable set apply when generating {@link
+  /// broker_desk_documents} from this wording.
+  kind String
+  
+  /// Display name identifying the template within its organization and kind.
+  ///
+  /// Administrators use it to pick wordings in the library browser; uniqueness
+  /// is enforced per organization and kind so two wordings of the same
+  /// paperwork type cannot collide.
+  name String
+  
+  /// Markdown or HTML wording containing {{variable}} placeholders substituted
+  /// at render time.
+  ///
+  /// Placeholders resolve against the owner entity (client, quote, policy, or
+  /// invoice) when paperwork is generated; the rendered output is copied into
+  /// the resulting {@link broker_desk_documents} row, so later edits to this
+  /// body never alter already-issued paperwork.
+  body String
+  
+  /// Intended language of the wording, either en or fr.
+  ///
+  /// Bilingual brokerages keep parallel English and French templates for the
+  /// same paperwork kind and select between them by the recipient's language
+  /// preference.
+  locale String
+  
+  /// Deprecation flag removing the template from future selection.
+  ///
+  /// Retired templates stay queryable for history but can no longer produce
+  /// new {@link broker_desk_documents}; flipping the flag back restores
+  /// availability without any data loss.
+  retired Boolean
+  
+  /// Timestamp when the template was created.
+  created_at DateTime @db.Timestamptz
+  
+  /// Timestamp of the most recent revision of the wording or metadata.
+  updated_at DateTime @db.Timestamptz
+  
+  /// Soft-delete timestamp; null while the template remains part of the
+  /// library.
+  ///
+  /// Day-to-day deprecation uses the retired flag instead; this column only
+  /// guards against physical row loss and keeps referential history intact.
+  deleted_at DateTime? @db.Timestamptz
+  
+  //----
+  // BELONGED RELATIONS,
+  //   - format: (propertyKey targetModel constraint)
+  //----
+  organization broker_desk_organizations @relation(fields: [broker_desk_organization_id], references: [id], onDelete: Cascade)
+  author broker_desk_admins @relation(fields: [broker_desk_admin_id], references: [id], onDelete: Cascade)
+  
+  //----
+  // HAS RELATIONS
+  //   - format: (propertyKey targetModel)
+  //----
+  generatedDocuments broker_desk_documents[]
+  
+  //----
+  // INDEXES
+  //----
+  @@index([broker_desk_admin_id])
+  // spellchecker: ignore-next-line
+  @@unique([broker_desk_organization_id, kind, name], map: "broker_desk_document_templates_broker_desk_organizatio_0c7019de")
+  // spellchecker: ignore-next-line
+  @@index([broker_desk_organization_id, kind, locale, retired], map: "broker_desk_document_templates_broker_desk_organizatio_402885b3")
+}
+
+/// Unified document registry holding every filed file in a brokerage — both
+/// manually uploaded attachments and paperwork generated from templates —
+/// each bound to exactly one polymorphic owner fixed at filing time.
+///
+/// Every document points at precisely one owner record (a client, quote,
+/// policy, or invoice) through the owner_type discriminator together with
+/// the matching {@link broker_desk_document_client_owners}, {@link
+/// broker_desk_document_quote_owners}, {@link
+/// broker_desk_document_policy_owners}, or {@link
+/// broker_desk_document_invoice_owners} junction row, which carries the
+/// enforced foreign key. The binding is established at upload or generation
+/// time and never changes, so documents cannot drift between owners.
+///
+/// This row always summarizes the currently active rendition: filename, MIME
+/// type, byte size, storage path, integrity checksum, and sequential version
+/// number. Superseded renditions remain fully retrievable in {@link
+/// broker_desk_document_versions}, which archives every replaced file and
+/// re-rendered output with its own metadata and stored rendered content.
+///
+/// Documents produced from branded wording carry a provenance reference to
+/// the originating {@link broker_desk_document_templates} entry, while
+/// manually uploaded files leave that reference null — making the
+/// generated-versus-uploaded distinction directly observable. Filing
+/// attribution records which staff actor category (admin, producer, or CSR)
+/// performed the upload. All rows are scoped to a {@link
+/// broker_desk_organizations} tenant for query-level isolation, and deletion
+/// is a soft delete that hides the document while preserving it and its
+/// version history for audit.
+///
+/// @namespace Document
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_documents {
+  //----
+  // COLUMNS
+  //----
+  /// Primary Key.
+  id String @id @db.Uuid
+  
+  /// Tenant anchor tying every filed document to the brokerage that owns it.
+  ///
+  /// All document listings, permission checks, and retention handling resolve
+  /// through this organization, mirroring the multi-tenant scoping carried by
+  /// the owning client, quote, policy, or invoice records themselves.
+  broker_desk_organization_id String @db.Uuid
+  
+  /// Provenance link identifying the {@link broker_desk_document_templates}
+  /// entry used to produce this document.
+  ///
+  /// A non-null value marks the document as template-generated paperwork whose
+  /// rendered HTML/text content was produced from the template body; a null
+  /// value marks a manually uploaded file. The generated-versus-uploaded
+  /// distinction is deliberately derived from this column's nullability rather
+  /// than duplicated in a separate origin flag.
+  broker_desk_document_template_id String? @db.Uuid
+  
+  /// Discriminator fixing which entity type owns the document: client, quote,
+  /// policy, or invoice.
+  ///
+  /// The value is immutable after filing and selects which of the {@link
+  /// broker_desk_document_client_owners}, {@link
+  /// broker_desk_document_quote_owners}, {@link
+  /// broker_desk_document_policy_owners}, or {@link
+  /// broker_desk_document_invoice_owners} junction rows holds the enforced
+  /// foreign key to the actual owner record.
+  owner_type String
+  
+  /// Business classification of the document, such as quote proposal, policy
+  /// schedule, certificate of insurance (COI), invoice paperwork, custom
+  /// correspondence, or a generic upload attachment.
+  ///
+  /// Drives filtering in document browsers and aligns with the template kinds
+  /// used at generation time.
+  kind String
+  
+  /// Human-readable display name of the currently active rendition, shown in
+  /// listings and downloads.
+  ///
+  /// Filenames of superseded versions remain preserved per rendition in {@link
+  /// broker_desk_document_versions}.
+  filename String
+  
+  /// IANA media type of the current rendition's content, for example
+  /// application/pdf or image/png.
+  ///
+  /// Used for download response headers and upload validation against
+  /// permitted file formats.
+  mime_type String
+  
+  /// Size of the current rendition's stored content in bytes.
+  ///
+  /// Feeds storage accounting and enforces upload size limits.
+  size_bytes Int @db.Integer
+  
+  /// Object-storage key locating the current rendition's binary or rendered
+  /// content.
+  ///
+  /// Always reflects the newest version; paths of replaced renditions remain
+  /// accessible only through {@link broker_desk_document_versions}.
+  storage_path String
+  
+  /// Integrity digest of the current rendition's content, used for tamper
+  /// detection and deduplication checks.
+  ///
+  /// Digests of earlier renditions stay recorded on their rows in {@link
+  /// broker_desk_document_versions}.
+  checksum String
+  
+  /// Sequential version number of the currently active rendition, starting at
+  /// 1.
+  ///
+  /// Every replacement upload or re-render increments this counter and
+  /// archives the prior rendition in {@link broker_desk_document_versions}.
+  version Int @db.Integer
+  
+  /// Discriminator naming the staff actor category that filed the document:
+  /// admin, producer, or csr.
+  ///
+  /// Paired with uploaded_by_id it provides filing attribution without
+  /// resorting to multiple nullable foreign keys across the separated actor
+  /// tables.
+  uploaded_by_type String
+  
+  /// Logical identifier of the concrete staff account ({@link
+  /// broker_desk_admins}, {@link broker_desk_producers}, or {@link
+  /// broker_desk_csrs}) that filed the document, interpreted according to
+  /// uploaded_by_type.
+  ///
+  /// Stored as a plain UUID rather than an enforced foreign key because the
+  /// referenced actor table varies per row; the type-and-id pairing keeps
+  /// attribution unambiguous and auditable.
+  uploaded_by_id String @db.Uuid
+  
+  /// Timestamp marking when the document was originally filed, whether by
+  /// first upload or by template generation.
+  created_at DateTime @db.Timestamptz
+  
+  /// Timestamp of the most recent modification to the document's metadata or
+  /// current-rendition pointers.
+  updated_at DateTime @db.Timestamptz
+  
+  /// Soft-deletion timestamp; a non-null value hides the document from active
+  /// listings while preserving the row and its version history for audit and
+  /// recovery.
+  deleted_at DateTime? @db.Timestamptz
+  
+  //----
+  // BELONGED RELATIONS,
+  //   - format: (propertyKey targetModel constraint)
+  //----
+  organization broker_desk_organizations @relation(fields: [broker_desk_organization_id], references: [id], onDelete: Cascade)
+  template broker_desk_document_templates? @relation(fields: [broker_desk_document_template_id], references: [id], onDelete: Cascade)
+  
+  //----
+  // HAS RELATIONS
+  //   - format: (propertyKey targetModel)
+  //----
+  versions broker_desk_document_versions[]
+  clientOwner broker_desk_document_client_owners?
+  policyOwner broker_desk_document_policy_owners?
+  invoiceOwner broker_desk_document_invoice_owners?
+  quoteOwner broker_desk_document_quote_owners?
+  
+  //----
+  // INDEXES
+  //----
+  @@index([broker_desk_document_template_id])
+  @@index([owner_type])
+  // spellchecker: ignore-next-line
+  @@index([broker_desk_organization_id, created_at], map: "broker_desk_documents_broker_desk_organization_id_crea_89c86be0")
+  @@index([broker_desk_organization_id, kind])
+  @@index([filename(ops: raw("gin_trgm_ops"))], type: Gin)
+}
+
+/// Immutable historical renditions of a {@link broker_desk_documents} record.
+///
+/// Whenever a document file is replaced through re-upload or re-rendering,
+/// the outgoing rendition is preserved here as a frozen snapshot so every
+/// version ever filed remains retrievable while listings show only the
+/// newest. Rows are append-only and never mutated after creation: each
+/// captures the exact filename, MIME type, byte size, blob-storage path, and
+/// integrity checksum of the file as it existed at capture time.
+///
+/// Version numbering is sequential per owning document starting at 1, and
+/// the pair of document reference and version number is unique, making the
+/// current rendition trivially identifiable as the highest number. Because
+/// rows are historical facts they carry only created_at; superseding content
+/// appends new rows instead of editing existing ones, and soft deletion of
+/// the parent {@link broker_desk_documents} row leaves this rendition
+/// history intact for retention and audit purposes.
+///
+/// Renditions produced by rendering a {@link broker_desk_document_templates}
+/// body additionally store their generated HTML/text output in
+/// rendered_content, guaranteeing that issued paperwork such as quote
+/// proposals, policy schedules, certificates of insurance, and invoices
+/// keeps the exact wording it carried at issuance even if the source
+/// template is later revised or retired.
+///
+/// Attribution of who filed each rendition follows the polymorphic-uploader
+/// subtype pattern: this table stores an uploader_role discriminator (ADMIN
+/// | PRODUCER | CSR, the staff roles permitted to file documents) and the
+/// concrete staff account is resolved through exactly one companion
+/// attribution table - {@link broker_desk_document_version_of_admins},
+/// {@link broker_desk_document_version_of_producers}, or {@link
+/// broker_desk_document_version_of_csrs} - rather than through multiple
+/// nullable foreign keys on this row.
+///
+/// @namespace Document
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_document_versions {
+  //----
+  // COLUMNS
+  //----
+  /// Primary Key.
+  id String @id @db.Uuid
+  
+  /// Reference to the owning {@link broker_desk_documents} record.
+  ///
+  /// All versions of one document chain back to the same stable document
+  /// identity, so replacing a file appends a new rendition here rather than
+  /// mutating the parent row; the parent's soft-deletion state does not remove
+  /// or alter this reference.
+  broker_desk_document_id String @db.Uuid
+  
+  /// Sequential rendition number within the owning document, starting at 1 for
+  /// the originally filed file and incrementing by one on every replacement or
+  /// re-render.
+  ///
+  /// Unique together with broker_desk_document_id, it orders the version
+  /// history and identifies the current rendition as the highest number.
+  version_number Int @db.Integer
+  
+  /// Display filename of this rendition exactly as filed or rendered when it
+  /// was captured.
+  ///
+  /// Kept per version rather than only on the parent {@link
+  /// broker_desk_documents} record so historical retrievals can present the
+  /// name under which the file was originally issued, even if later versions
+  /// renamed it.
+  filename String
+  
+  /// IANA media type of the stored rendition, such as application/pdf or
+  /// text/html.
+  ///
+  /// Preserves how consumers should interpret the bytes retrieved from
+  /// storage_path for this specific historical version.
+  mime_type String
+  
+  /// Size of the rendition payload in bytes.
+  ///
+  /// Supports download headers, quota accounting, and storage-capacity
+  /// reporting without fetching the object from blob storage.
+  size_bytes Int @db.Integer
+  
+  /// Blob-storage key under which this rendition's bytes are persisted.
+  ///
+  /// Unique across all rows so every stored object maps to exactly one
+  /// rendition, guaranteeing that retrieving or pruning a storage object never
+  /// affects a different document version.
+  storage_path String
+  
+  /// Integrity checksum (SHA-256 hexadecimal digest) of the rendition payload.
+  ///
+  /// Enables tamper detection and content verification on retrieval,
+  /// supporting PIPEDA-aware integrity expectations for client-facing
+  /// insurance paperwork.
+  checksum String
+  
+  /// Stored HTML/text output captured when this rendition was produced by
+  /// rendering a {@link broker_desk_document_templates} body.
+  ///
+  /// Null for manually uploaded files whose content lives only at
+  /// storage_path; populated for generated paperwork so issued proposals,
+  /// schedules, certificates of insurance, and invoices keep the exact wording
+  /// they carried at issuance even after the source template is later revised
+  /// or retired.
+  rendered_content String?
+  
+  /// Discriminator identifying which staff actor type filed this rendition:
+  /// ADMIN, PRODUCER, or CSR.
+  ///
+  /// Read together with the matching broker_desk_document_version_of_*
+  /// attribution table to resolve the concrete staff account without storing
+  /// multiple nullable foreign keys on this row.
+  uploader_role String
+  
+  /// Timestamp when this rendition was captured, i.e. when the file was
+  /// uploaded or the template render completed.
+  ///
+  /// Serves as the immutable version's sole temporal marker; retention sweeps
+  /// and audit timelines order renditions by it.
+  created_at DateTime @db.Timestamptz
+  
+  //----
+  // BELONGED RELATIONS,
+  //   - format: (propertyKey targetModel constraint)
+  //----
+  document broker_desk_documents @relation(fields: [broker_desk_document_id], references: [id], onDelete: Cascade)
+  
+  //----
+  // HAS RELATIONS
+  //   - format: (propertyKey targetModel)
+  //----
+  ofAdmin broker_desk_document_version_of_admins?
+  producerAttribution broker_desk_document_version_of_producers?
+  csrAttribution broker_desk_document_version_of_csrs?
+  
+  //----
+  // INDEXES
+  //----
+  // spellchecker: ignore-next-line
+  @@unique([broker_desk_document_id, version_number], map: "broker_desk_document_versions_broker_desk_document_id__d8b138f8")
+  @@unique([storage_path])
+  @@index([created_at])
+  @@index([uploader_role])
+}
+
+/// Ownership junction fixing a filed document to its client owner, enforcing
+/// the single-owner invariant for client-bound files within the unified
+/// {@link broker_desk_documents} space.
+///
+/// Exactly one row of this table exists for every {@link
+/// broker_desk_documents} record whose polymorphic owner is a client, while
+/// quote-, policy-, and invoice-bound files are fixed by their sibling
+/// junctions instead. The binding is established once when the file is
+/// uploaded or generated against the client profile and never migrates to
+/// another owner, so the unique constraint on the document reference
+/// guarantees each document resolves through at most one owner path.
+///
+/// The reverse direction is intentionally many-to-one from owners to
+/// clients: a single {@link broker_desk_clients} record legitimately owns
+/// unlimited documents such as identification, correspondence, certificates,
+/// and letters, so only the document-side reference carries uniqueness. Rows
+/// are created and read alongside their parent document lifecycle.
+///
+/// @namespace Document
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_document_client_owners {
+  //----
+  // COLUMNS
+  //----
+  /// Primary Key.
+  id String @id @db.Uuid
+  
+  /// Reference to the {@link broker_desk_documents} record being claimed as
+  /// client-owned.
+  ///
+  /// This is the junction's anchoring half: the unique constraint on this
+  /// column realizes the 1:1 relationship between a document and its
+  /// client-owner attribution row, so no document can ever resolve to two
+  /// client-owner rows. It pairs with the sibling owner junctions covering
+  /// quote, policy, and invoice polymorphic cases.
+  broker_desk_document_id String @db.Uuid
+  
+  /// Reference to the owning {@link broker_desk_clients} profile the document
+  /// belongs to.
+  ///
+  /// Many documents may reference the same client, making this the non-unique
+  /// side of the junction; queries listing a client's paperwork filter on this
+  /// column. The referenced client belongs to the same organization as the
+  /// document, preserving tenant isolation.
+  broker_desk_client_id String @db.Uuid
+  
+  /// Timestamp recording when the document was bound to its client owner, i.e.
+  /// upload or generation time; kept separate from row update mechanics so
+  /// chronological document listings remain stable.
+  created_at DateTime @db.Timestamptz
+  
+  /// Timestamp of the most recent correction to the ownership row itself,
+  /// maintained for consistency with platform-wide audit conventions even
+  /// though the owner binding is immutable after creation.
+  updated_at DateTime @db.Timestamptz
+  
+  /// Soft-deletion marker aligning the junction's retirement with the
+  /// soft-deleted state of its parent document, allowing tenant-scoped
+  /// listings to exclude withdrawn paperwork without physical removal.
+  deleted_at DateTime? @db.Timestamptz
+  
+  //----
+  // BELONGED RELATIONS,
+  //   - format: (propertyKey targetModel constraint)
+  //----
+  document broker_desk_documents @relation(fields: [broker_desk_document_id], references: [id], onDelete: Cascade)
+  client broker_desk_clients @relation(fields: [broker_desk_client_id], references: [id], onDelete: Cascade)
+  
+  //----
+  // INDEXES
+  //----
+  @@unique([broker_desk_document_id])
+  // spellchecker: ignore-next-line
+  @@index([broker_desk_client_id, created_at], map: "broker_desk_document_client_owners_broker_desk_client__ce2c8a2f")
+}
+
+/// Ownership junction binding a filed document to its owning {@link
+/// broker_desk_policies} policy record.
+///
+/// Exactly one row per {@link broker_desk_documents} record exists across
+/// the four sibling owner junctions ({@link
+/// broker_desk_document_client_owners}, quote owners, policy owners, invoice
+/// owners); this table holds the rows for documents whose single fixed owner
+/// is a policy. A unique constraint on the document reference enforces the
+/// single-owner invariant, while the non-unique policy reference permits one
+/// policy to own many documents.
+///
+/// The binding is established once when the document is uploaded or
+/// template-rendered and never re-pointed afterward; lifecycle of the row
+/// follows the document itself, which carries soft deletion.
+///
+/// @namespace Document
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_document_policy_owners {
+  //----
+  // COLUMNS
+  //----
+  /// Primary key of the ownership junction row.
+  id String @id @db.Uuid
+  
+  /// Reference to the owned {@link broker_desk_documents} record.
+  ///
+  /// Unique and mandatory so each document resolves to exactly one
+  /// policy-owner row, jointly enforcing the polymorphic single-owner
+  /// invariant together with the three sibling junctions.
+  broker_desk_document_id String @db.Uuid
+  
+  /// Reference to the owning {@link broker_desk_policies} policy.
+  ///
+  /// Non-unique because a policy owns many documents (policy schedules,
+  /// certificates of insurance, endorsements correspondence); deletion of the
+  /// referenced policy cascades conceptually through its document bindings.
+  broker_desk_policy_id String @db.Uuid
+  
+  /// Timestamp when the ownership binding was created, coinciding with the
+  /// document upload or template render that fixed the policy owner.
+  created_at DateTime @db.Timestamptz
+  
+  /// Timestamp of the most recent change to the binding row; normally equal to
+  /// created_at because ownership links are immutable after establishment.
+  updated_at DateTime @db.Timestamptz
+  
+  //----
+  // BELONGED RELATIONS,
+  //   - format: (propertyKey targetModel constraint)
+  //----
+  document broker_desk_documents @relation(fields: [broker_desk_document_id], references: [id], onDelete: Cascade)
+  policy broker_desk_policies @relation(fields: [broker_desk_policy_id], references: [id], onDelete: Cascade)
+  
+  //----
+  // INDEXES
+  //----
+  @@unique([broker_desk_document_id])
+  // spellchecker: ignore-next-line
+  @@index([broker_desk_policy_id, broker_desk_document_id], map: "broker_desk_document_policy_owners_broker_desk_policy__ab79a245")
+}
+
+/// Ownership junction fixing a {@link broker_desk_documents} record to its
+/// {@link broker_desk_invoices} owner, enforcing the single-owner invariant
+/// for invoice-bound files.
+///
+/// Every filed file binds to exactly one polymorphic owner fixed at upload
+/// time; this table realizes that binding whenever the owner is an invoice.
+/// The document-side foreign key is unique, guaranteeing each invoice-owned
+/// document participates in exactly one ownership row, while the invoice
+/// side admits many documents per invoice so a billing record can carry
+/// proposals, certificates, receipts, and correspondence together.
+///
+/// The row is written once when a document is attached to its invoice and is
+/// never mutated afterwards, acting purely as the join point through which
+/// invoice-scoped document listings resolve.
+///
+/// @namespace Document
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_document_invoice_owners {
+  //----
+  // COLUMNS
+  //----
+  /// Primary Key.
+  id String @id @db.Uuid
+  
+  /// Reference to the invoice-bound {@link broker_desk_documents} record whose
+  /// owner this row fixes.
+  ///
+  /// Unique across the table so each document resolves to at most one invoice
+  /// ownership link, upholding the single-owner invariant of the polymorphic
+  /// document space shared with the client, quote, and policy owner junctions.
+  broker_desk_document_id String @db.Uuid
+  
+  /// Reference to the owning {@link broker_desk_invoices} record to which the
+  /// document is attached.
+  ///
+  /// Many documents may point at one invoice, letting an invoice accumulate
+  /// its complete paperwork trail without duplicating ownership state on the
+  /// document itself.
+  broker_desk_invoice_id String @db.Uuid
+  
+  /// Moment the ownership binding was recorded, captured when the document was
+  /// first attached to its invoice.
+  created_at DateTime @db.Timestamptz
+  
+  //----
+  // BELONGED RELATIONS,
+  //   - format: (propertyKey targetModel constraint)
+  //----
+  // spellchecker: ignore-next-line
+  document broker_desk_documents @relation(fields: [broker_desk_document_id], references: [id], onDelete: Cascade, map: "broker_desk_document_invoice_owners_broker_desk_docume_93d48b0b")
+  invoice broker_desk_invoices @relation(fields: [broker_desk_invoice_id], references: [id], onDelete: Cascade)
+  
+  //----
+  // INDEXES
+  //----
+  // spellchecker: ignore-next-line
+  @@unique([broker_desk_document_id], map: "broker_desk_document_invoice_owners_broker_desk_docume_a671e471")
+  // spellchecker: ignore-next-line
+  @@index([broker_desk_invoice_id, created_at], map: "broker_desk_document_invoice_owners_broker_desk_invoic_776084ca")
+}
+
+/// Administrator-attribution record fixing a single {@link
+/// broker_desk_document_versions} rendition to the {@link
+/// broker_desk_admins} account that filed it, completing the
+/// staff-authorship trail for admin-uploaded paperwork.
+///
+/// Whenever an administrator uploads a file or triggers template-based
+/// generation of client-facing paperwork, the resulting {@link
+/// broker_desk_document_versions} rendition stays actor-neutral, and the
+/// filing identity is resolved through exactly one row of this table. A
+/// unique constraint on the version reference enforces the one-to-one
+/// relationship, preserving the invariant that every rendition has at most
+/// one filing attribution while keeping role-specific foreign keys off the
+/// shared rendition table.
+///
+/// Because document filings can originate from administrators, producers, or
+/// customer service representatives, polymorphic ownership is decomposed
+/// into per-actor attribution tables instead of multiple nullable actor
+/// columns. This model is the administrator arm of that decomposition,
+/// sitting alongside its producer and CSR sibling tables, so listings can
+/// resolve uploader identity by joining whichever attribution arm matches.
+///
+/// Rows are write-once in practice: they are created when the rendition is
+/// filed and are only ever retired together with their owning document,
+/// keeping historical paperwork accountability intact.
+///
+/// @namespace Document
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_document_version_of_admins {
+  //----
+  // COLUMNS
+  //----
+  /// Primary Key.
+  id String @id @db.Uuid
+  
+  /// The {@link broker_desk_document_versions} rendition being attributed to
+  /// the filing administrator.
+  ///
+  /// A unique, mandatory reference enforcing the one-to-one relationship: each
+  /// rendition owns at most one attribution row, and this table contains
+  /// exactly one row per attributed rendition. Superseding or retiring the
+  /// rendition ends the meaning of this attribution, so the reference can
+  /// never be null.
+  broker_desk_document_version_id String @db.Uuid
+  
+  /// The {@link broker_desk_admins} account that filed the rendition.
+  ///
+  /// Records which brokerage administrator performed the upload or template
+  /// render, providing permanent staff accountability for admin-authored
+  /// paperwork that survives later account changes. One administrator may file
+  /// many renditions over time, so the relationship is one-to-many from the
+  /// administrator's perspective while remaining one-to-one from the
+  /// rendition's perspective.
+  broker_desk_admin_id String @db.Uuid
+  
+  /// Moment the attribution was recorded.
+  ///
+  /// Normally coincides with the filing instant of the rendition; stored
+  /// independently so attribution bookkeeping stays auditable even if
+  /// rendition-level timestamps change.
+  created_at DateTime @db.Timestamptz
+  
+  /// Timestamp of the most recent modification of the attribution row.
+  ///
+  /// Maintained by the application on update; expected to stay equal to
+  /// created_at because attributions are write-once.
+  updated_at DateTime @db.Timestamptz
+  
+  /// Soft-deletion timestamp for the attribution row.
+  ///
+  /// Null while the attribution is live; populated only when the owning
+  /// document or rendition is retired, so historical filing trails remain
+  /// reconstructable without physical removal.
+  deleted_at DateTime? @db.Timestamptz
+  
+  //----
+  // BELONGED RELATIONS,
+  //   - format: (propertyKey targetModel constraint)
+  //----
+  // spellchecker: ignore-next-line
+  documentVersion broker_desk_document_versions @relation(fields: [broker_desk_document_version_id], references: [id], onDelete: Cascade, map: "broker_desk_document_version_of_admins_broker_desk_doc_bad6ac1f")
+  // spellchecker: ignore-next-line
+  admin broker_desk_admins @relation(fields: [broker_desk_admin_id], references: [id], onDelete: Cascade, map: "broker_desk_document_version_of_admins_broker_desk_adm_7533dd6c")
+  
+  //----
+  // INDEXES
+  //----
+  // spellchecker: ignore-next-line
+  @@unique([broker_desk_document_version_id], map: "broker_desk_document_version_of_admins_broker_desk_doc_6935c4d0")
+  // spellchecker: ignore-next-line
+  @@index([broker_desk_admin_id, created_at], map: "broker_desk_document_version_of_admins_broker_desk_adm_9631b9a0")
+}
+
+/// Attribution row binding one {@link broker_desk_document_versions}
+/// rendition to the {@link broker_desk_producers} producer who filed it.
+///
+/// The row exists so the shared rendition table never carries nullable actor
+/// columns: whenever a producer uploads or re-renders a document file,
+/// exactly one of the per-actor attribution tables receives a row, and this
+/// table is the producer branch of that polymorphic ownership split. A
+/// unique constraint on the document-version foreign key guarantees the
+/// one-to-one relationship, meaning a rendition can be attributed to at most
+/// one producer.
+///
+/// The record is written once when the producer files the rendition and is
+/// treated as immutable filing history thereafter, giving permanent staff
+/// attribution for audit and book-of-business reporting.
+///
+/// @namespace Document
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_document_version_of_producers {
+  //----
+  // COLUMNS
+  //----
+  /// Primary Key.
+  id String @id @db.Uuid
+  
+  /// Reference to the {@link broker_desk_document_versions} rendition being
+  /// attributed.
+  ///
+  /// Uniqueness of this reference makes the relationship strictly one-to-one:
+  /// every producer attribution belongs to exactly one rendition and every
+  /// rendition carries at most one producer attribution. It is the join point
+  /// through which the filed filename, storage path, checksum, and rendered
+  /// content of the rendition can be reached.
+  broker_desk_document_version_id String @db.Uuid
+  
+  /// Reference to the {@link broker_desk_producers} account that uploaded or
+  /// re-rendered the rendition.
+  ///
+  /// Establishes permanent staff attribution so producer filings remain
+  /// traceable to the owning sales broker even after role changes or
+  /// deactivation, and enables per-producer queries over the documents a
+  /// producer has filed. A producer may file many renditions, hence the
+  /// one-to-many direction from {@link broker_desk_producers}.
+  broker_desk_producer_id String @db.Uuid
+  
+  /// Timestamp recording when the producer filed the rendition and this
+  /// attribution row was created.
+  ///
+  /// Because the row is immutable filing history, creation time doubles as the
+  /// filing time and no mutation timestamps are maintained.
+  created_at DateTime @db.Timestamptz
+  
+  //----
+  // BELONGED RELATIONS,
+  //   - format: (propertyKey targetModel constraint)
+  //----
+  // spellchecker: ignore-next-line
+  documentVersion broker_desk_document_versions @relation(fields: [broker_desk_document_version_id], references: [id], onDelete: Cascade, map: "broker_desk_document_version_of_producers_broker_desk__f7d94f1f")
+  // spellchecker: ignore-next-line
+  producer broker_desk_producers @relation(fields: [broker_desk_producer_id], references: [id], onDelete: Cascade, map: "broker_desk_document_version_of_producers_broker_desk__bf81205a")
+  
+  //----
+  // INDEXES
+  //----
+  // spellchecker: ignore-next-line
+  @@unique([broker_desk_document_version_id], map: "broker_desk_document_version_of_producers_broker_desk__8a36718a")
+  // spellchecker: ignore-next-line
+  @@index([broker_desk_producer_id, created_at], map: "broker_desk_document_version_of_producers_broker_desk__24d75e9d")
+}
+
+/// Staff-attribution row binding exactly one {@link
+/// broker_desk_document_versions} rendition to the {@link broker_desk_csrs}
+/// customer service representative who filed it.
+///
+/// A row exists only when a CSR manually uploaded or re-rendered a document
+/// version, keeping the rendition itself actor-agnostic while permanently
+/// recording who performed the filing. The link to the rendition is
+/// one-to-one, enforced by a unique foreign key, so a rendition carries at
+/// most one CSR attribution — renditions filed by administrators or
+/// producers resolve through the sibling subtype tables {@link
+/// broker_desk_document_version_of_admins} and {@link
+/// broker_desk_document_version_of_producers} instead.
+///
+/// Rows are append-only: they are written at filing time and never mutated
+/// afterward, so only creation time is tracked and no soft deletion applies
+/// — lifecycle removal is governed by the owning document.
+///
+/// @namespace Document
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_document_version_of_csrs {
+  //----
+  // COLUMNS
+  //----
+  /// Primary Key.
+  id String @id @db.Uuid
+  
+  /// The document rendition whose filer is being attributed, linked one-to-one.
+  ///
+  /// Uniqueness on this reference guarantees every {@link
+  /// broker_desk_document_versions} row resolves to at most one CSR
+  /// attribution, preserving the single-CSR-filer invariant while filings by
+  /// other staff roles remain in their own subtype tables.
+  broker_desk_document_version_id String @db.Uuid
+  
+  /// The {@link broker_desk_csrs} account that filed the rendition, recorded
+  /// permanently for service-history and accountability purposes.
+  ///
+  /// One CSR files many renditions over time, making the relationship
+  /// many-to-one from attribution rows to the representative; paired with the
+  /// creation timestamp it enables a complete chronological view of everything
+  /// a given representative filed.
+  broker_desk_csr_id String @db.Uuid
+  
+  /// Moment at which the CSR filed the rendition and this attribution row was
+  /// written.
+  ///
+  /// Immutable after insertion because attribution rows are append-only; used
+  /// together with the CSR reference to build the representative's
+  /// chronological filing history.
+  created_at DateTime @db.Timestamptz
+  
+  //----
+  // BELONGED RELATIONS,
+  //   - format: (propertyKey targetModel constraint)
+  //----
+  // spellchecker: ignore-next-line
+  documentVersion broker_desk_document_versions @relation(fields: [broker_desk_document_version_id], references: [id], onDelete: Cascade, map: "broker_desk_document_version_of_csrs_broker_desk_docum_3c0353f5")
+  csr broker_desk_csrs @relation(fields: [broker_desk_csr_id], references: [id], onDelete: Cascade)
+  
+  //----
+  // INDEXES
+  //----
+  // spellchecker: ignore-next-line
+  @@unique([broker_desk_document_version_id], map: "broker_desk_document_version_of_csrs_broker_desk_docum_426b6a95")
+  // spellchecker: ignore-next-line
+  @@index([broker_desk_csr_id, created_at], map: "broker_desk_document_version_of_csrs_broker_desk_csr_i_4cb9af55")
+}
+
+/// Ownership link binding a filed {@link broker_desk_documents} record to
+/// its {@link broker_desk_quotes} quotation owner.
+///
+/// Documents are polymorphically owned: every filed file belongs to exactly
+/// one owner among clients, quotes, policies, and invoices, fixed at upload
+/// time. This table realizes the quote arm of that invariant. Exactly one
+/// row may reference any given document — enforced by a unique constraint on
+/// the document foreign key — so a quote-classified file always resolves to
+/// precisely one owning quote, while client-, policy-, and invoice-bound
+/// files resolve through the sibling owner tables instead.
+///
+/// Each row carries only the two structural references plus the moment the
+/// link was recorded. Mutable attributes such as filename, mime type, size,
+/// checksum, version history, and stored rendered content live on the
+/// referenced {@link broker_desk_documents} record and its rendition
+/// records, keeping this junction purely a normalized pointer pair.
+///
+/// @namespace Document
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_document_quote_owners {
+  //----
+  // COLUMNS
+  //----
+  /// Primary Key.
+  id String @id @db.Uuid
+  
+  /// Reference to the {@link broker_desk_documents} record whose quote
+  /// ownership this row declares.
+  ///
+  /// The unique constraint on this column enforces the polymorphic
+  /// single-owner invariant: a document may appear here at most once,
+  /// guaranteeing exactly one owning quote per quote-classified file. Together
+  /// with the sibling client-, policy-, and invoice-owner junctions, any given
+  /// document belongs to exactly one owner family member.
+  broker_desk_document_id String @db.Uuid
+  
+  /// Reference to the {@link broker_desk_quotes} quotation that owns the
+  /// linked document.
+  ///
+  /// Established once when the document is uploaded or template-rendered in
+  /// the context of a comparative quotation — for example a proposal produced
+  /// from a {@link broker_desk_document_templates} body — and never reassigned
+  /// afterwards. One quote aggregates many owned documents through this
+  /// one-to-many side.
+  broker_desk_quote_id String @db.Uuid
+  
+  /// Moment the quote-ownership link was recorded, coinciding with the upload
+  /// or template-driven rendering of the bound document.
+  ///
+  /// Ownership rows are immutable: the link is written once and never mutated
+  /// or reassigned, and deletion lifecycle belongs to the owning {@link
+  /// broker_desk_documents} record itself, so no updated_at or deleted_at
+  /// columns exist here.
+  created_at DateTime @db.Timestamptz
+  
+  //----
+  // BELONGED RELATIONS,
+  //   - format: (propertyKey targetModel constraint)
+  //----
+  document broker_desk_documents @relation(fields: [broker_desk_document_id], references: [id], onDelete: Cascade)
+  quote broker_desk_quotes @relation(fields: [broker_desk_quote_id], references: [id], onDelete: Cascade)
+  
+  //----
+  // INDEXES
+  //----
+  @@unique([broker_desk_document_id])
+  // spellchecker: ignore-next-line
+  @@index([broker_desk_quote_id, broker_desk_document_id], map: "broker_desk_document_quote_owners_broker_desk_quote_id_7330695f")
+}

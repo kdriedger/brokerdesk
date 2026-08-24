@@ -1,0 +1,671 @@
+/// Root tenant representing an independent insurance brokerage; every
+/// business record in the system belongs to exactly one {@link
+/// broker_desk_organizations}.
+///
+/// The organization is the top-level isolation boundary of BrokerDesk's
+/// multi-tenant architecture. It is created transactionally alongside the
+/// first administrator account during public registration, after which all
+/// staff actors, client profiles, commercial records, catalogue data, and
+/// paperwork are scoped to it through organization ownership enforced on
+/// every query.
+///
+/// Profile content covers the brokerage's legal identity (registered legal
+/// name, optional operating/trade name), contact channel (business phone),
+/// CRA tax registration (HST/GST number), and the embedded principal-office
+/// address block. Provincial context is captured twice by design:
+/// primary_province declares the operating jurisdiction driving licence
+/// checks and default taxation, while the address block locates the physical
+/// office for correspondence and document rendering.
+///
+/// Financial configuration is anchored by the fixed CAD currency column
+/// mandated by Canadian compliance, plus the settings JSON column storing
+/// the organization-configurable tax rate table seeded with Ontario HST 13%
+/// as the default example; invoice lines consult these configured rates when
+/// stamping GST/HST/QST/exempt treatment and recording the rate used at
+/// issuance.
+///
+/// Administrators exclusively manage this record through organization
+/// profile and settings endpoints; changes flow into the audit trail where
+/// applicable. Soft deletion is intentionally unsupported - tenants are
+/// deactivated through user administration rather than removed.
+///
+/// @namespace Systematic
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_organizations {
+  //----
+  // COLUMNS
+  //----
+  /// Primary key identifying the brokerage organization that owns every
+  /// business record in the system.
+  id String @id @db.Uuid
+  
+  /// Registered legal name of the brokerage.
+  ///
+  /// Used on official documents, invoices, certificates of insurance, and
+  /// regulatory filings. Distinct from the operating name, which may be a
+  /// trade name under which the brokerage does business.
+  legal_name String
+  
+  /// Trade or operating name used publicly when it differs from the registered
+  /// legal name.
+  ///
+  /// Nullable because most independent brokerages operate under their legal
+  /// name; consumers fall back to legal_name for display when absent.
+  operating_name String?
+  
+  /// Canadian province or territory code (ON, QC, AB, BC, ...) where the
+  /// brokerage primarily operates.
+  ///
+  /// Drives default provincial taxation rules seeded into the settings tax
+  /// rate table, producer licence jurisdiction checks, and province-scoped
+  /// filtering across the platform.
+  primary_province String
+  
+  /// Primary business telephone number of the brokerage.
+  ///
+  /// Rendered onto client-facing paperwork produced from document templates
+  /// such as invoices and certificates.
+  phone String?
+  
+  /// HST/GST registration number issued by the CRA (format 123456789RT0001).
+  ///
+  /// Appears on invoices and other tax-bearing documents. Nullable because a
+  /// freshly registered brokerage may not yet hold a registration number.
+  hst_gst_number String?
+  
+  /// Fixed ISO currency code governing every monetary value recorded by the
+  /// platform.
+  ///
+  /// Always 'CAD' per Canadian compliance requirements; persisted as an
+  /// explicit column so financial records remain self-describing even though
+  /// multi-currency support does not exist.
+  default_currency String
+  
+  /// Organization-scoped configuration JSON holding the configurable tax rate
+  /// table plus related brokerage preferences.
+  ///
+  /// Explicitly specified JSON content: seeded with Ontario HST 13% as the
+  /// default example, it stores per-province sales tax rates
+  /// (GST/HST/QST/exempt handling), broker fee taxability flags, and similar
+  /// configurable values consumed when issuing invoice lines. Stored as a
+  /// string-typed column; service-layer validation enforces structure on read
+  /// and write.
+  settings String
+  
+  /// Street address line 1 of the brokerage's principal office.
+  ///
+  /// First line of the embedded brokerage address block specified for the
+  /// organization; printed on client-facing documents.
+  address_line1 String?
+  
+  /// Street address line 2 (unit, suite, or floor) of the brokerage's
+  /// principal office.
+  ///
+  /// Optional continuation of the embedded brokerage address block.
+  address_line2 String?
+  
+  /// City of the brokerage's principal office.
+  ///
+  /// Municipality component of the embedded brokerage address block.
+  city String?
+  
+  /// Province code of the brokerage's principal office address.
+  ///
+  /// Geographic component of the embedded brokerage address block, independent
+  /// of primary_province which captures the overall operating jurisdiction.
+  province String?
+  
+  /// Postal code of the brokerage's principal office (A1A 1A1 format).
+  ///
+  /// Final component of the embedded brokerage address block.
+  postal_code String?
+  
+  /// Timestamp when the organization record was created.
+  ///
+  /// Set once during first-administrator registration, which creates the
+  /// organization transactionally together with the founding ADMIN user
+  /// account.
+  created_at DateTime @db.Timestamptz
+  
+  /// Timestamp of the most recent modification to the organization record.
+  ///
+  /// Refreshed whenever administrators update profile details or revise the
+  /// settings configuration through organization management endpoints.
+  updated_at DateTime @db.Timestamptz
+  
+  //----
+  // HAS RELATIONS
+  //   - format: (propertyKey targetModel)
+  //----
+  admins broker_desk_admins[]
+  producers broker_desk_producers[]
+  csrs broker_desk_csrs[]
+  clientAccounts broker_desk_clients[]
+  auditLogs broker_desk_audit_logs[]
+  notifications broker_desk_notifications[]
+  tasks broker_desk_tasks[]
+  addressOwners broker_desk_address_of_organizations[]
+  carrierAppointments broker_desk_carrier_appointments[]
+  quotes broker_desk_quotes[]
+  policies broker_desk_policies[]
+  policyRenewals broker_desk_policy_renewals[]
+  invoices broker_desk_invoices[]
+  commissions broker_desk_commissions[]
+  commissionStatements broker_desk_commission_statements[]
+  documentTemplates broker_desk_document_templates[]
+  documents broker_desk_documents[]
+}
+
+/// Immutable append-only audit trail attributing every recorded creation,
+/// modification, deletion, and practical client-personal-information access
+/// event on critical business entities to the acting staff member within one
+/// {@link broker_desk_organizations}.
+///
+/// Coverage follows the compliance mandate: changes to clients, quotes,
+/// policies, endorsements, invoices, commissions, staff accounts, and
+/// products are logged, while reads touching client personal information are
+/// captured as access events so privacy accountability under Canadian
+/// requirements can be demonstrated. Each row stores the performed action, a
+/// logical entity type with the referenced row identifier, and nullable
+/// serialized JSON before/after snapshots that together constitute the
+/// change diff; rows are written once by the platform and never mutated or
+/// soft-deleted, which is why the model carries only created_at.
+///
+/// Concrete attribution to the acting identity lives one-to-one in the
+/// {@link broker_desk_audit_log_of_admins}, {@link
+/// broker_desk_audit_log_of_producers}, and {@link
+/// broker_desk_audit_log_of_csrs} companion rows selected through the
+/// actorType discriminator. This subtype layout keeps the main table free of
+/// multiple nullable actor foreign keys while still resolving exactly who
+/// acted and from which sign-in session.
+///
+/// @namespace Systematic
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_audit_logs {
+  //----
+  // COLUMNS
+  //----
+  /// Primary Key.
+  id String @id @db.Uuid
+  
+  /// Brokerage tenant that owns this audit entry.
+  ///
+  /// Every business record in BrokerDesk belongs to exactly one {@link
+  /// broker_desk_organizations}; an audit entry inherits the tenant scope of
+  /// the change it describes so administrators review the trail strictly
+  /// within their own brokerage.
+  broker_desk_organization_id String @db.Uuid
+  
+  /// Discriminator naming which staff actor kind performed the recorded event.
+  ///
+  /// Constrained in application logic to admin, producer, or csr; routes
+  /// attribution resolution to the matching one-to-one companion table ({@link
+  /// broker_desk_audit_log_of_admins}, {@link
+  /// broker_desk_audit_log_of_producers}, or {@link
+  /// broker_desk_audit_log_of_csrs}) instead of stacking nullable actor
+  /// foreign keys on this table.
+  actor_type String
+  
+  /// Verb performed on the affected entity.
+  ///
+  /// Constrained in application logic to create, update, delete, or access,
+  /// where access denotes a read touching client personal information captured
+  /// for privacy accountability rather than a data mutation.
+  action String
+  
+  /// Logical type label of the audited entity.
+  ///
+  /// Stores the stable domain name of the affected record — client, quote,
+  /// policy, endorsement, invoice, commission, admin, producer, csr, or
+  /// product — so the companion pointer in entityRefId resolves without
+  /// coupling this table to physical table names.
+  entity_type String
+  
+  /// Primary key of the affected entity row.
+  ///
+  /// Deliberately a plain UUID rather than a foreign key because the
+  /// referenced table varies with entityType; paired with entityType it forms
+  /// the lookup path retrieving the complete change history of any single
+  /// record.
+  entity_ref_id String @db.Uuid
+  
+  /// Serialized JSON snapshot of the entity state before the change.
+  ///
+  /// Null for create and access events, where no prior state exists to record;
+  /// stored as JSON text under the explicit audit-diff requirement so
+  /// reviewers see exactly which fields changed.
+  before_data String?
+  
+  /// Serialized JSON snapshot of the entity state after the change.
+  ///
+  /// Null for delete and access events, where no resulting state exists;
+  /// combined with beforeData it forms the before/after diff demanded by the
+  /// audit specification.
+  after_data String?
+  
+  /// Timestamp when the event was recorded.
+  ///
+  /// Doubles as the occurrence moment because rows are immutable once written;
+  /// updatedAt and deletedAt are intentionally absent from this append-only
+  /// trail.
+  created_at DateTime @db.Timestamptz
+  
+  //----
+  // BELONGED RELATIONS,
+  //   - format: (propertyKey targetModel constraint)
+  //----
+  organization broker_desk_organizations @relation(fields: [broker_desk_organization_id], references: [id], onDelete: Cascade)
+  
+  //----
+  // HAS RELATIONS
+  //   - format: (propertyKey targetModel)
+  //----
+  adminAttribution broker_desk_audit_log_of_admins?
+  producerAttribution broker_desk_audit_log_of_producers?
+  ofCsr broker_desk_audit_log_of_csrs?
+  
+  //----
+  // INDEXES
+  //----
+  @@index([actor_type])
+  // spellchecker: ignore-next-line
+  @@index([broker_desk_organization_id, created_at], map: "broker_desk_audit_logs_broker_desk_organization_id_cre_97700dfa")
+  // spellchecker: ignore-next-line
+  @@index([broker_desk_organization_id, entity_type, created_at], map: "broker_desk_audit_logs_broker_desk_organization_id_ent_421d0db4")
+  @@index([entity_type, entity_ref_id])
+}
+
+/// Alert record addressed to exactly one staff member or portal user, raised
+/// by persisted system triggers such as task due dates, expiring producer
+/// licences, expiring policies, upcoming renewals, and carrier submission
+/// status changes.
+///
+/// Each {@link broker_desk_notifications} row is scoped to one {@link
+/// broker_desk_organizations} so tenant isolation applies to the alert
+/// stream just like every other business record; the recipient, however, is
+/// stored polymorphically (recipient_role plus recipient_user_id) because
+/// brokerage identities live in separate actor tables — administrators,
+/// producers, CSRs, and portal clients — and stacking nullable per-role
+/// foreign keys here would violate normalization, so referential integrity
+/// of the pair is enforced at the application layer.
+///
+/// The triggering source is likewise referenced polymorphically through
+/// source_entity_type and source_entity_id because the five trigger families
+/// originate from different tables ({@link broker_desk_tasks} for task_due,
+/// producer licence records for producer_licence_expiring, {@link
+/// broker_desk_policies} for policy_expiring, {@link
+/// broker_desk_policy_renewals} for renewal_due, and {@link
+/// broker_desk_submissions} for submission_status_changed); the pair doubles
+/// as the deep-link target the notification center uses to open the
+/// originating record.
+///
+/// Lifecycle is intentionally small: created_at records when the trigger
+/// fired, read_at flips from null to a timestamp when the recipient
+/// acknowledges the alert, updated_at tracks that acknowledgement, and
+/// deleted_at softly dismisses the alert from the inbox without destroying
+/// the trail. Rows are written exclusively by the platform's persisted
+/// triggers; users never author notifications, they only browse,
+/// acknowledge, and dismiss them.
+///
+/// @namespace Systematic
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_notifications {
+  //----
+  // COLUMNS
+  //----
+  /// Primary Key.
+  id String @id @db.Uuid
+  
+  /// Brokerage tenant that owns this notification.
+  ///
+  /// Every business record in BrokerDesk belongs to exactly one {@link
+  /// broker_desk_organizations}, and notifications are no exception: the
+  /// organization boundary guarantees staff only ever see alerts raised inside
+  /// their own brokerage and gives administrators a natural scope for
+  /// organization-wide administration.
+  broker_desk_organization_id String @db.Uuid
+  
+  /// Trigger family that raised the alert: task_due,
+  /// producer_licence_expiring, policy_expiring, renewal_due, or
+  /// submission_status_changed.
+  ///
+  /// The value mirrors the five persisted notification triggers required by
+  /// the platform and lets API consumers render type-specific icons, grouping,
+  /// and deep links in the notification center without parsing prose.
+  type String
+  
+  /// Short human-readable headline displayed in notification lists.
+  ///
+  /// Kept deliberately brief so dense inbox rows stay scannable, with detail
+  /// deferred to body.
+  title String
+  
+  /// Free-form message elaborating the alert beyond its headline.
+  ///
+  /// Populated by whichever persisted trigger raised the record — for example
+  /// the licence number and expiry date for a producer_licence_expiring alert
+  /// or the carrier reference for a submission_status_changed alert.
+  body String
+  
+  /// Actor family the recipient belongs to: ADMIN, PRODUCER, CSR, or CLIENT.
+  ///
+  /// Because brokerage identities are physically realized as separate actor
+  /// tables (administrators, producers, CSRs, and portal clients), the role
+  /// selects which table holds the recipient row identified by
+  /// recipient_user_id; the pair forms the polymorphic recipient reference
+  /// whose integrity is enforced at the application layer, avoiding prohibited
+  /// stacks of nullable per-role foreign keys.
+  recipient_role String
+  
+  /// Identifier of the addressed person within the actor table selected by
+  /// recipient_role.
+  ///
+  /// Combined with recipient_role this drives every inbox query — list mine,
+  /// count unread, mark read — which is why the composite indexes lead with
+  /// these two columns.
+  recipient_user_id String @db.Uuid
+  
+  /// Logical table name of the entity that triggered the notification, such as
+  /// broker_desk_tasks, producer licence records, broker_desk_policies, policy
+  /// renewal records, or broker_desk_submissions.
+  ///
+  /// Together with source_entity_id it forms the polymorphic deep-link target
+  /// that lets the notification center navigate straight to the originating
+  /// record regardless of which domain raised the alert.
+  source_entity_type String
+  
+  /// Primary key of the triggering entity inside the table named by
+  /// source_entity_type.
+  ///
+  /// Indexed as a composite pair with source_entity_type to support reverse
+  /// lookups, such as clearing stale alerts when a task completes or a
+  /// submission changes state again.
+  source_entity_id String @db.Uuid
+  
+  /// Moment the recipient acknowledged the alert; null while unread.
+  ///
+  /// Unread badge counts and unread-only filters test this column for null,
+  /// and marking a notification read stamps it once; the column participates
+  /// in a composite index so unread filtering stays indexed per recipient.
+  read_at DateTime? @db.Timestamptz
+  
+  /// Moment the trigger persisted this alert.
+  ///
+  /// Inbox listings sort descending on this column so the newest alerts appear
+  /// first.
+  created_at DateTime @db.Timestamptz
+  
+  /// Last modification time, advanced whenever the record changes after
+  /// creation, such as when acknowledgement is stamped.
+  ///
+  /// Maintained alongside created_at per the platform-wide temporal convention.
+  updated_at DateTime @db.Timestamptz
+  
+  /// Soft-dismissal marker; null while the notification remains visible in the
+  /// inbox.
+  ///
+  /// Dismissing an alert hides it from the recipient without destroying the
+  /// audit-relevant record, mirroring the soft-deletion discipline applied
+  /// elsewhere in the platform.
+  deleted_at DateTime? @db.Timestamptz
+  
+  //----
+  // BELONGED RELATIONS,
+  //   - format: (propertyKey targetModel constraint)
+  //----
+  organization broker_desk_organizations @relation(fields: [broker_desk_organization_id], references: [id], onDelete: Cascade)
+  
+  //----
+  // INDEXES
+  //----
+  @@index([broker_desk_organization_id])
+  // spellchecker: ignore-next-line
+  @@index([recipient_role, recipient_user_id, read_at], map: "broker_desk_notifications_recipient_role_recipient_use_ff844761")
+  // spellchecker: ignore-next-line
+  @@index([recipient_role, recipient_user_id, created_at], map: "broker_desk_notifications_recipient_role_recipient_use_ae1877c9")
+  // spellchecker: ignore-next-line
+  @@index([source_entity_type, source_entity_id], map: "broker_desk_notifications_source_entity_type_source_en_9d3e4cea")
+}
+
+/// {@link broker_desk_audit_log_of_admins} identifies which administrator
+/// performed an audited action, binding an append-only {@link
+/// broker_desk_audit_logs} entry to the acting {@link broker_desk_admins}
+/// account and to the {@link broker_desk_admin_sessions} sign-in session in
+/// effect at the time.
+///
+/// The parent {@link broker_desk_audit_logs} trail stores only what happened
+/// - action, affected entity type and reference, before/after diff, and
+/// timestamp - so a single immutable event stream can serve every actor
+/// type. Who-did-it resolution follows the main-entity-plus-subtype pattern:
+/// this subtype row exists precisely when an administrator acted, letting
+/// reviewers expand any audit entry into concrete staff accountability
+/// without introducing multiple nullable actor foreign keys on the parent.
+/// Because at most one administrator can act per audit entry, the
+/// relationship to the trail is strictly one-to-one, enforced by a unique
+/// foreign key.
+///
+/// Rows are written once when the audited event is recorded and are never
+/// updated or deleted, mirroring the immutability contract of the audit
+/// trail itself; consequently only a creation timestamp is kept and no
+/// soft-delete marker applies.
+///
+/// Pairing the administrator with the originating session strengthens
+/// security investigations: reviewers can join to {@link
+/// broker_desk_admin_sessions} to recover device context such as ip, href,
+/// and referrer, confirming the change was made inside a live authenticated
+/// session rather than through a stale or stolen credential.
+///
+/// @namespace Systematic
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_audit_log_of_admins {
+  //----
+  // COLUMNS
+  //----
+  /// Primary Key.
+  id String @id @db.Uuid
+  
+  /// Audit entry whose acting administrator this row attributes.
+  ///
+  /// Exactly one {@link broker_desk_audit_log_of_admins} row may exist per
+  /// {@link broker_desk_audit_logs} entry, so this foreign key is both
+  /// mandatory and unique, enforcing the strict one-to-one relationship. It is
+  /// populated whenever an administrator creates, updates, or deletes a
+  /// critical entity such as a client, quote, policy, endorsement, invoice,
+  /// commission, user, or product, or when client PII access is captured.
+  broker_desk_audit_log_id String @db.Uuid
+  
+  /// Administrator account whose credentials were used for the audited action.
+  ///
+  /// Links the entry to the specific {@link broker_desk_admins} member of the
+  /// brokerage so compliance reviewers can answer who changed a given critical
+  /// record and when, satisfying the read-only audit review rights described
+  /// for administrators.
+  broker_desk_admin_id String @db.Uuid
+  
+  /// Authenticated sign-in session during which the audited action occurred.
+  ///
+  /// References {@link broker_desk_admin_sessions} so investigators can
+  /// correlate the entry with device context recorded on the session and
+  /// verify the change took place inside a live authenticated login rather
+  /// than through a stale credential.
+  broker_desk_admin_session_id String @db.Uuid
+  
+  /// Timestamp at which the attribution row was written.
+  ///
+  /// Assigned once on insert because {@link broker_desk_audit_log_of_admins}
+  /// is append-only; it coincides with the recording moment of the parent
+  /// {@link broker_desk_audit_logs} entry and never changes afterwards.
+  created_at DateTime @db.Timestamptz
+  
+  //----
+  // BELONGED RELATIONS,
+  //   - format: (propertyKey targetModel constraint)
+  //----
+  auditLog broker_desk_audit_logs @relation(fields: [broker_desk_audit_log_id], references: [id], onDelete: Cascade)
+  admin broker_desk_admins @relation(fields: [broker_desk_admin_id], references: [id], onDelete: Cascade)
+  // spellchecker: ignore-next-line
+  session broker_desk_admin_sessions @relation(fields: [broker_desk_admin_session_id], references: [id], onDelete: Cascade, map: "broker_desk_audit_log_of_admins_broker_desk_admin_sess_63986662")
+  
+  //----
+  // INDEXES
+  //----
+  @@unique([broker_desk_audit_log_id])
+  // spellchecker: ignore-next-line
+  @@index([broker_desk_admin_session_id], map: "broker_desk_audit_log_of_admins_broker_desk_admin_sess_3f8fd596")
+  // spellchecker: ignore-next-line
+  @@index([broker_desk_admin_id, created_at], map: "broker_desk_audit_log_of_admins_broker_desk_admin_id_c_6aa0565a")
+}
+
+/// Audit-trail attribution subtype identifying {@link broker_desk_producers}
+/// members as the actors behind audit log entries, pairing each qualifying
+/// {@link broker_desk_audit_logs} row with the exact {@link
+/// broker_desk_producer_sessions} sign-in that was active when the action
+/// occurred.
+///
+/// @namespace Systematic
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_audit_log_of_producers {
+  //----
+  // COLUMNS
+  //----
+  /// Primary Key.
+  id String @id @db.Uuid
+  
+  /// Reference to the {@link broker_desk_audit_logs} entry this attribution
+  /// annotates.
+  ///
+  /// Uniqueness makes the relationship strictly one-to-one: an audit entry
+  /// carries at most one producer attribution, mirroring the single-actor rule
+  /// of the append-only audit trail. The value is assigned in the same
+  /// transaction that writes the parent log row and is never repointed
+  /// afterward.
+  broker_desk_audit_log_id String @db.Uuid
+  
+  /// The {@link broker_desk_producers} account identified as the actor of the
+  /// annotated audit entry.
+  ///
+  /// Lets compliance dashboards, own-book access filters, and producer
+  /// accountability reports query the audit trail directly by producer without
+  /// resolving the session relationship first. Retained as an explicit foreign
+  /// key even though the referenced session also identifies its owning
+  /// producer, because the attribution design mandates both the actor account
+  /// and the sign-in context side by side.
+  broker_desk_producer_id String @db.Uuid
+  
+  /// The {@link broker_desk_producer_sessions} sign-in during which the
+  /// audited action was performed.
+  ///
+  /// Provides device-level investigation context - IP address, href, and
+  /// referrer stored on the session record - which strengthens PIPEDA-aware
+  /// reviews of how client PII was accessed. Sessions are immutable historical
+  /// artifacts, so the reference captured at write time remains valid for the
+  /// lifetime of the log entry.
+  broker_desk_producer_session_id String @db.Uuid
+  
+  /// Timestamp recording when this attribution row was written, coinciding
+  /// with the creation moment of the annotated {@link broker_desk_audit_logs}
+  /// entry.
+  created_at DateTime @db.Timestamptz
+  
+  //----
+  // BELONGED RELATIONS,
+  //   - format: (propertyKey targetModel constraint)
+  //----
+  // spellchecker: ignore-next-line
+  auditLog broker_desk_audit_logs @relation(fields: [broker_desk_audit_log_id], references: [id], onDelete: Cascade, map: "broker_desk_audit_log_of_producers_broker_desk_audit_l_bf84c36c")
+  producer broker_desk_producers @relation(fields: [broker_desk_producer_id], references: [id], onDelete: Cascade)
+  // spellchecker: ignore-next-line
+  session broker_desk_producer_sessions @relation(fields: [broker_desk_producer_session_id], references: [id], onDelete: Cascade, map: "broker_desk_audit_log_of_producers_broker_desk_produce_0f3cd1fc")
+  
+  //----
+  // INDEXES
+  //----
+  // spellchecker: ignore-next-line
+  @@index([broker_desk_producer_session_id], map: "broker_desk_audit_log_of_producers_broker_desk_produce_ccd648b5")
+  @@unique([broker_desk_audit_log_id])
+  // spellchecker: ignore-next-line
+  @@index([broker_desk_producer_id, created_at], map: "broker_desk_audit_log_of_producers_broker_desk_produce_2572b2d5")
+}
+
+/// Append-only attribution record binding a {@link broker_desk_audit_logs}
+/// entry to the customer service representative ({@link broker_desk_csrs})
+/// who performed the audited change and the sign-in session through which it
+/// was made.
+///
+/// Every audit entry whose acting staff member is a CSR carries exactly one
+/// row here: the unique {@link broker_desk_audit_logs} foreign key enforces
+/// strict 1:1 pairing between an audit entry and its CSR attribution, while
+/// the {@link broker_desk_csrs} foreign key names the responsible account so
+/// administrators can filter the compliance trail per service
+/// representative.
+///
+/// The {@link broker_desk_csr_sessions} identifier is stored deliberately as
+/// a bare UUID reference rather than an enforced foreign key so immutable
+/// audit history survives session-table rotation and cleanup; combined with
+/// the acting account it answers "which representative acted from which
+/// authenticated device" for every audited change.
+///
+/// Rows are written once alongside their audit entry and are never updated
+/// or soft-deleted, keeping the trail tamper-evident; together with {@link
+/// broker_desk_audit_log_of_admins} and {@link
+/// broker_desk_audit_log_of_producers} it completes the polymorphic
+/// actor-attribution family over the audit log without introducing nullable
+/// actor foreign keys on the parent.
+///
+/// @namespace Systematic
+/// @author AutoBE - https://github.com/wrtnlabs/autobe
+model broker_desk_audit_log_of_csrs {
+  //----
+  // COLUMNS
+  //----
+  /// Primary Key.
+  id String @id @db.Uuid
+  
+  /// Audit entry attributed to a customer service representative.
+  ///
+  /// Exactly one row of this table exists for each {@link
+  /// broker_desk_audit_logs} record whose acting user is a CSR; the unique
+  /// constraint on this column enforces the 1:1 pairing between an audit entry
+  /// and its CSR attribution and serves as the direct lookup path when
+  /// expanding an audit entry into actor details.
+  broker_desk_audit_log_id String @db.Uuid
+  
+  /// Customer service representative who performed the audited action.
+  ///
+  /// References the {@link broker_desk_csrs} account held responsible for the
+  /// change captured in the paired {@link broker_desk_audit_logs} entry,
+  /// enabling per-representative filtering of the audit trail. Deactivating or
+  /// removing the account never erases past attributions, preserving
+  /// accountability history within the brokerage.
+  broker_desk_csr_id String @db.Uuid
+  
+  /// Identifier of the {@link broker_desk_csr_sessions} sign-in session that
+  /// was active when the audit entry was written.
+  ///
+  /// Stored deliberately as a bare UUID reference instead of an enforced
+  /// foreign key so the immutable audit history survives session-table
+  /// housekeeping; together with the acting-account foreign key it answers
+  /// which representative acted from which authenticated session.
+  broker_desk_csr_session_id String @db.Uuid
+  
+  /// Timestamp recording when this attribution row was persisted.
+  ///
+  /// Coincides with the creation moment of the paired {@link
+  /// broker_desk_audit_logs} entry and never changes afterwards, because
+  /// attribution rows are immutable once written; supports chronological
+  /// ordering of a representative's audited activity.
+  created_at DateTime @db.Timestamptz
+  
+  //----
+  // BELONGED RELATIONS,
+  //   - format: (propertyKey targetModel constraint)
+  //----
+  auditLog broker_desk_audit_logs @relation(fields: [broker_desk_audit_log_id], references: [id], onDelete: Cascade)
+  csr broker_desk_csrs @relation(fields: [broker_desk_csr_id], references: [id], onDelete: Cascade)
+  
+  //----
+  // INDEXES
+  //----
+  @@unique([broker_desk_audit_log_id])
+  @@index([broker_desk_csr_id, created_at])
+}

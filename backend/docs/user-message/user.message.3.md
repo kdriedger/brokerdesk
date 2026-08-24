@@ -1,0 +1,1 @@
+Design the database schema for BrokerDesk based on the requirements analysis. Use PostgreSQL-oriented Prisma modeling, multi-tenant organization scoping, CAD money fields, Canadian province fields, and soft-delete + audit where specified.
