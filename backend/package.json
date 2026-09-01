@@ -1,0 +1,31 @@
+{
+  "name": "brokerdesk-backend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "BrokerDesk backend API interface (AutoBE-generated, interface phase)",
+  "scripts": {
+    "build": "nestia build",
+    "build:sdk": "nestia sdk",
+    "build:swagger": "nestia swagger",
+    "start": "ts-node src/main.ts"
+  },
+  "dependencies": {
+    "@nestjs/common": "^11.0.1",
+    "@nestjs/core": "^11.0.1",
+    "@nestjs/platform-express": "^11.0.1",
+    "@nestia/core": "^11.0.1",
+    "@nestia/fetcher": "^11.0.1",
+    "reflect-metadata": "^0.2.2",
+    "typia": "^12.0.1"
+  },
+  "devDependencies": {
+    "@nestia/sdk": "^11.0.1",
+    "@types/express": "^5.0.1",
+    "@types/node": "^22.15.0",
+    "nestia": "^11.0.1",
+    "ts-node": "^10.9.2",
+    "ts-patch": "^3.3.0",
+    "typescript": "~5.9.3",
+    "typescript-transform-paths": "^3.5.5"
+  }
+}
