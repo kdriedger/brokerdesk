@@ -18,3 +18,4 @@ demo/*.webm
 *.db
 .beads-credential-key
 .beads/proxieddb/
+backend.bak-*/

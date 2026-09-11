@@ -16,18 +16,26 @@ autobe-install:
 	@test -d .tools/autobe || (echo "cloning autobe..." && git clone --depth=1 https://github.com/wrtnlabs/autobe .tools/autobe)
 	cd .tools/autobe && pnpm install
 
-# Requires OPENCODE_API_KEY in the environment (OpenCode Go).
-# Do NOT use --transpile-only — typia transformers must run.
+# Requires OPENCODE_API_KEY in the environment — the Zen key from
+# ~/.hermes/.env (OPENCODE_ZEN_API_KEY), NOT the Go key. See
+# .autobe-state/opencode.env for the driver's env file.
+#
+# Verify the model slug before starting a long run: the Zen catalog changes
+# (`GET https://opencode.ai/zen/v1/models`). Notes as of 2026-09-10:
+#   * free slugs (*-free) only work inside the OpenCode client — a plain API
+#     client gets "MissingSessionID ... free tier can only be used in OpenCode"
+#   * paid slugs need workspace credits (else CreditsError: insufficient balance)
+#   * the Go route (zen/go/v1) also requires x-opencode-session
 autobe-generate:
 	mkdir -p .autobe-state backend
 	cd .tools/autobe && pnpm --filter @autobe/agent run build:prompt
 	cd .tools/autobe/test && \
-	  OPENCODE_BASE_URL=$${OPENCODE_BASE_URL:-https://opencode.ai/zen/go/v1} \
-	  AUTOBE_MODEL=$${AUTOBE_MODEL:-ox-alpha-free} \
+	  OPENCODE_BASE_URL=$${OPENCODE_BASE_URL:-https://opencode.ai/zen/v1} \
+	  AUTOBE_MODEL=$${AUTOBE_MODEL:-deepseek-v4-flash} \
 	  SEMAPHORE=$${SEMAPHORE:-4} \
-	  node --max-old-space-size=8192 -r ts-node/register src/archive/brokerdesk.ts \
-	    --model $${AUTOBE_MODEL:-ox-alpha-free} \
-	    --from $${FROM:-analyze} \
+	  node --max-old-space-size=$${NODE_HEAP:-8192} -r ts-node/register src/archive/brokerdesk.ts \
+	    --model $${AUTOBE_MODEL:-deepseek-v4-flash} \
+	    --from $${FROM:-database} \
 	    --to $${TO:-realize} \
 	    --semaphore $${SEMAPHORE:-4}
 

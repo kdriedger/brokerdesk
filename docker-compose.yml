@@ -9,7 +9,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - brokerdesk_pgdata:/var/lib/postgresql/data
+      - brokerdesk_pgdata:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U brokerdesk"]
       interval: 5s
@@ -22,7 +22,7 @@ services:
     working_dir: /app
     volumes:
       - ../backend:/app
-    command: sh -c "echo 'backend container: run via make backend (pnpm dev)' && tail -f /dev/null"
+    command: ["sh", "-c", "echo 'backend container: run via make backend (pnpm dev)' && tail -f /dev/null"]
     depends_on:
       postgres:
         condition: service_healthy

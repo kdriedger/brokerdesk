@@ -4,7 +4,7 @@
   "private": true,
   "description": "BrokerDesk backend API interface (AutoBE-generated, interface phase)",
   "scripts": {
-    "build": "nestia build",
+    "build": "nestia sdk && tsc",
     "build:sdk": "nestia sdk",
     "build:swagger": "nestia swagger",
     "start": "ts-node src/main.ts"

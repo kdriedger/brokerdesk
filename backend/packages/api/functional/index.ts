@@ -22,3 +22,4 @@ export * as documents from "./documents/index";
 export * as document_templates from "./document_templates/index";
 export * as policies from "./policies/index";
 export * as quotes from "./quotes/index";
+export * as notifications from "./notifications/index";
