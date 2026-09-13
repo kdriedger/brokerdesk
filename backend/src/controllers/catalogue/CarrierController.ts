@@ -8,6 +8,18 @@ import {
   IPageIBrokerDeskCarrierAppointmentISummary,
   IPageIBrokerDeskCarrierISummary,
 } from "../../api/structures/BrokerDeskCatalogueCarrier";
+import {
+  deleteCarrier,
+  deleteCarrierAppointment,
+  getCarrier,
+  getCarrierAppointment,
+  patchCarrierAppointments,
+  patchCarriers,
+  postCarrierAppointments,
+  postCarriers,
+  putCarrier,
+  putCarrierAppointment,
+} from "../../providers/catalogue/carrier";
 
 /**
  * Catalogue carrier administration controller.
@@ -32,7 +44,7 @@ export class BrokerDeskCatalogueCarrierController {
   public async index(
     @TypedBody() body: IBrokerDeskCarrier.IRequest,
   ): Promise<IPageIBrokerDeskCarrierISummary> {
-    throw new Error("Not implemented");
+    return patchCarriers(body);
   }
 
   /**
@@ -48,7 +60,7 @@ export class BrokerDeskCatalogueCarrierController {
   public async create(
     @TypedBody() body: IBrokerDeskCarrier.ICreate,
   ): Promise<IBrokerDeskCarrier> {
-    throw new Error("Not implemented");
+    return postCarriers(body);
   }
 
   /**
@@ -63,7 +75,7 @@ export class BrokerDeskCatalogueCarrierController {
   public async at(
     @TypedParam("carrierId") carrierId: string & tags.Format<"uuid">,
   ): Promise<IBrokerDeskCarrier> {
-    throw new Error("Not implemented");
+    return getCarrier(carrierId);
   }
 
   /**
@@ -78,7 +90,7 @@ export class BrokerDeskCatalogueCarrierController {
     @TypedParam("carrierId") carrierId: string & tags.Format<"uuid">,
     @TypedBody() body: IBrokerDeskCarrier.IUpdate,
   ): Promise<IBrokerDeskCarrier> {
-    throw new Error("Not implemented");
+    return putCarrier(carrierId, body);
   }
 
   /**
@@ -93,7 +105,7 @@ export class BrokerDeskCatalogueCarrierController {
   public async erase(
     @TypedParam("carrierId") carrierId: string & tags.Format<"uuid">,
   ): Promise<void> {
-    throw new Error("Not implemented");
+    return deleteCarrier(carrierId);
   }
 }
 
@@ -123,7 +135,7 @@ export class BrokerDeskCatalogueCarrierAppointmentController {
     @TypedParam("carrierId") carrierId: string & tags.Format<"uuid">,
     @TypedBody() body: IBrokerDeskCarrierAppointment.IRequest,
   ): Promise<IPageIBrokerDeskCarrierAppointmentISummary> {
-    throw new Error("Not implemented");
+    return patchCarrierAppointments(carrierId, body);
   }
 
   /**
@@ -140,7 +152,7 @@ export class BrokerDeskCatalogueCarrierAppointmentController {
     @TypedParam("carrierId") carrierId: string & tags.Format<"uuid">,
     @TypedBody() body: IBrokerDeskCarrierAppointment.ICreate,
   ): Promise<IBrokerDeskCarrierAppointment> {
-    throw new Error("Not implemented");
+    return postCarrierAppointments(carrierId, body);
   }
 
   /**
@@ -155,7 +167,7 @@ export class BrokerDeskCatalogueCarrierAppointmentController {
     @TypedParam("carrierId") carrierId: string & tags.Format<"uuid">,
     @TypedParam("appointmentId") appointmentId: string & tags.Format<"uuid">,
   ): Promise<IBrokerDeskCarrierAppointment> {
-    throw new Error("Not implemented");
+    return getCarrierAppointment(carrierId, appointmentId);
   }
 
   /**
@@ -175,7 +187,7 @@ export class BrokerDeskCatalogueCarrierAppointmentController {
     @TypedParam("appointmentId") appointmentId: string & tags.Format<"uuid">,
     @TypedBody() body: IBrokerDeskCarrierAppointment.IUpdate,
   ): Promise<IBrokerDeskCarrierAppointment> {
-    throw new Error("Not implemented");
+    return putCarrierAppointment(carrierId, appointmentId, body);
   }
 
   /**
@@ -189,6 +201,6 @@ export class BrokerDeskCatalogueCarrierAppointmentController {
     @TypedParam("carrierId") carrierId: string & tags.Format<"uuid">,
     @TypedParam("appointmentId") appointmentId: string & tags.Format<"uuid">,
   ): Promise<void> {
-    throw new Error("Not implemented");
+    return deleteCarrierAppointment(carrierId, appointmentId);
   }
 }

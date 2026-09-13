@@ -4,6 +4,13 @@ import { tags } from "typia";
 
 import { IBrokerDeskAdmin } from "../../api/structures/BrokerDeskActorsAdmin";
 import { IPage } from "../../api/structures/IPage";
+import {
+  deleteAdminAdmins,
+  getAdminAdminsAt,
+  patchAdminAdmins,
+  postAdminAdmins,
+  putAdminAdmins,
+} from "../../providers/admin/admins";
 
 /**
  * Admin-managed administrator account roster.
@@ -26,7 +33,7 @@ export class BrokerDeskActorsAdminsController {
   public async index(
     @TypedBody() body: IBrokerDeskAdmin.IRequest,
   ): Promise<IPage<IBrokerDeskAdmin.ISummary>> {
-    throw new Error("Not implemented");
+    return patchAdminAdmins(body);
   }
 
   /**
@@ -42,7 +49,7 @@ export class BrokerDeskActorsAdminsController {
   public async create(
     @TypedBody() body: IBrokerDeskAdmin.ICreate,
   ): Promise<IBrokerDeskAdmin> {
-    throw new Error("Not implemented");
+    return postAdminAdmins(body);
   }
 
   /**
@@ -55,7 +62,7 @@ export class BrokerDeskActorsAdminsController {
   public async at(
     @TypedParam("adminId") adminId: string & tags.Format<"uuid">,
   ): Promise<IBrokerDeskAdmin> {
-    throw new Error("Not implemented");
+    return getAdminAdminsAt(adminId);
   }
 
   /**
@@ -74,7 +81,7 @@ export class BrokerDeskActorsAdminsController {
     @TypedParam("adminId") adminId: string & tags.Format<"uuid">,
     @TypedBody() body: IBrokerDeskAdmin.IUpdate,
   ): Promise<IBrokerDeskAdmin> {
-    throw new Error("Not implemented");
+    return putAdminAdmins(adminId, body);
   }
 
   /**
@@ -90,6 +97,6 @@ export class BrokerDeskActorsAdminsController {
   public async erase(
     @TypedParam("adminId") adminId: string & tags.Format<"uuid">,
   ): Promise<void> {
-    throw new Error("Not implemented");
+    return deleteAdminAdmins(adminId);
   }
 }

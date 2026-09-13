@@ -6,6 +6,13 @@ import {
   IBrokerDeskActivity,
   IPageIBrokerDeskActivitySummary,
 } from "../../api/structures/BrokerDeskCrmActivity";
+import {
+  deleteCrmActivity,
+  getCrmActivities,
+  getCrmActivity,
+  postCrmActivity,
+  putCrmActivity,
+} from "../../providers/crm/activities";
 
 /**
  * Client activity controller: interaction history entries typed call, email,
@@ -27,7 +34,7 @@ export class BrokerDeskCrmActivityController {
   public async index(
     @TypedParam("clientId") clientId: string & tags.Format<"uuid">,
   ): Promise<IPageIBrokerDeskActivitySummary> {
-    throw new Error("Not implemented");
+    return getCrmActivities(clientId);
   }
 
   /**
@@ -42,7 +49,7 @@ export class BrokerDeskCrmActivityController {
     @TypedParam("clientId") clientId: string & tags.Format<"uuid">,
     @TypedParam("activityId") activityId: string & tags.Format<"uuid">,
   ): Promise<IBrokerDeskActivity> {
-    throw new Error("Not implemented");
+    return getCrmActivity(clientId, activityId);
   }
 
   /**
@@ -61,7 +68,7 @@ export class BrokerDeskCrmActivityController {
     @TypedParam("clientId") clientId: string & tags.Format<"uuid">,
     @TypedBody() body: IBrokerDeskActivity.ICreate,
   ): Promise<IBrokerDeskActivity> {
-    throw new Error("Not implemented");
+    return postCrmActivity(clientId, body);
   }
 
   /**
@@ -78,7 +85,7 @@ export class BrokerDeskCrmActivityController {
     @TypedParam("activityId") activityId: string & tags.Format<"uuid">,
     @TypedBody() body: IBrokerDeskActivity.IUpdate,
   ): Promise<IBrokerDeskActivity> {
-    throw new Error("Not implemented");
+    return putCrmActivity(clientId, activityId, body);
   }
 
   /**
@@ -94,6 +101,6 @@ export class BrokerDeskCrmActivityController {
     @TypedParam("clientId") clientId: string & tags.Format<"uuid">,
     @TypedParam("activityId") activityId: string & tags.Format<"uuid">,
   ): Promise<void> {
-    throw new Error("Not implemented");
+    return deleteCrmActivity(clientId, activityId);
   }
 }

@@ -3,6 +3,13 @@ import { Controller } from "@nestjs/common";
 import { tags } from "typia";
 
 import { IBrokerDeskAddress } from "../../api/structures/BrokerDeskCrmAddress";
+import {
+  deleteCrmClientAddress,
+  getCrmClientAddress,
+  getCrmClientAddresses,
+  postCrmClientAddress,
+  putCrmClientAddress,
+} from "../../providers/crm/addresses";
 
 /**
  * Client address controller: attach, list, read, update, and detach typed
@@ -23,7 +30,7 @@ export class BrokerDeskCrmClientAddressController {
   public async index(
     @TypedParam("clientId") clientId: string & tags.Format<"uuid">,
   ): Promise<IBrokerDeskAddress[]> {
-    throw new Error("Not implemented");
+    return getCrmClientAddresses(clientId);
   }
 
   /**
@@ -38,7 +45,7 @@ export class BrokerDeskCrmClientAddressController {
     @TypedParam("clientId") clientId: string & tags.Format<"uuid">,
     @TypedParam("addressId") addressId: string & tags.Format<"uuid">,
   ): Promise<IBrokerDeskAddress> {
-    throw new Error("Not implemented");
+    return getCrmClientAddress(clientId, addressId);
   }
 
   /**
@@ -56,7 +63,7 @@ export class BrokerDeskCrmClientAddressController {
     @TypedParam("clientId") clientId: string & tags.Format<"uuid">,
     @TypedBody() body: IBrokerDeskAddress.ICreate,
   ): Promise<IBrokerDeskAddress> {
-    throw new Error("Not implemented");
+    return postCrmClientAddress(clientId, body);
   }
 
   /**
@@ -73,7 +80,7 @@ export class BrokerDeskCrmClientAddressController {
     @TypedParam("addressId") addressId: string & tags.Format<"uuid">,
     @TypedBody() body: IBrokerDeskAddress.IUpdate,
   ): Promise<IBrokerDeskAddress> {
-    throw new Error("Not implemented");
+    return putCrmClientAddress(clientId, addressId, body);
   }
 
   /**
@@ -89,7 +96,7 @@ export class BrokerDeskCrmClientAddressController {
     @TypedParam("clientId") clientId: string & tags.Format<"uuid">,
     @TypedParam("addressId") addressId: string & tags.Format<"uuid">,
   ): Promise<void> {
-    throw new Error("Not implemented");
+    return deleteCrmClientAddress(clientId, addressId);
   }
 }
 

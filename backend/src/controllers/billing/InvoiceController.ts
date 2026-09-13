@@ -7,6 +7,19 @@ import {
   IBrokerDeskInvoiceLine,
 } from "../../api/structures/BrokerDeskBilling";
 import { IPage } from "../../api/structures/IPage";
+import {
+  addInvoiceLine,
+  createInvoice,
+  eraseInvoice,
+  eraseInvoiceLine,
+  getInvoice,
+  listInvoiceLines,
+  patchInvoices,
+  sendInvoice,
+  updateInvoice,
+  updateInvoiceLine,
+  voidInvoice,
+} from "../../providers/billing/invoices";
 
 @Controller("invoices")
 export class BrokerDeskBillingInvoiceController {
@@ -25,7 +38,7 @@ export class BrokerDeskBillingInvoiceController {
   public async index(
     @TypedBody() body: IBrokerDeskInvoice.IRequest,
   ): Promise<IPage<IBrokerDeskInvoice.ISummary>> {
-    throw new Error("Not implemented");
+    return patchInvoices(body);
   }
 
   /**
@@ -41,7 +54,7 @@ export class BrokerDeskBillingInvoiceController {
   public async at(
     @TypedParam("invoiceId") invoiceId: string & tags.Format<"uuid">,
   ): Promise<IBrokerDeskInvoice> {
-    throw new Error("Not implemented");
+    return getInvoice(invoiceId);
   }
 
   /**
@@ -59,7 +72,7 @@ export class BrokerDeskBillingInvoiceController {
   public async create(
     @TypedBody() body: IBrokerDeskInvoice.ICreate,
   ): Promise<IBrokerDeskInvoice> {
-    throw new Error("Not implemented");
+    return createInvoice(body);
   }
 
   /**
@@ -78,7 +91,7 @@ export class BrokerDeskBillingInvoiceController {
     @TypedParam("invoiceId") invoiceId: string & tags.Format<"uuid">,
     @TypedBody() body: IBrokerDeskInvoice.IUpdate,
   ): Promise<IBrokerDeskInvoice> {
-    throw new Error("Not implemented");
+    return updateInvoice(invoiceId, body);
   }
 
   /**
@@ -93,7 +106,7 @@ export class BrokerDeskBillingInvoiceController {
   public async erase(
     @TypedParam("invoiceId") invoiceId: string & tags.Format<"uuid">,
   ): Promise<void> {
-    throw new Error("Not implemented");
+    return eraseInvoice(invoiceId);
   }
 
   /**
@@ -109,7 +122,7 @@ export class BrokerDeskBillingInvoiceController {
   public async send(
     @TypedParam("invoiceId") invoiceId: string & tags.Format<"uuid">,
   ): Promise<IBrokerDeskInvoice> {
-    throw new Error("Not implemented");
+    return sendInvoice(invoiceId);
   }
 
   /**
@@ -127,7 +140,7 @@ export class BrokerDeskBillingInvoiceController {
     @TypedParam("invoiceId") invoiceId: string & tags.Format<"uuid">,
     @TypedBody() body: IBrokerDeskInvoice.IVoid,
   ): Promise<IBrokerDeskInvoice> {
-    throw new Error("Not implemented");
+    return voidInvoice(invoiceId, body);
   }
 
   /**
@@ -140,7 +153,7 @@ export class BrokerDeskBillingInvoiceController {
   public async lines(
     @TypedParam("invoiceId") invoiceId: string & tags.Format<"uuid">,
   ): Promise<IBrokerDeskInvoiceLine[]> {
-    throw new Error("Not implemented");
+    return listInvoiceLines(invoiceId);
   }
 
   /**
@@ -159,7 +172,7 @@ export class BrokerDeskBillingInvoiceController {
     @TypedParam("invoiceId") invoiceId: string & tags.Format<"uuid">,
     @TypedBody() body: IBrokerDeskInvoiceLine.ICreate,
   ): Promise<IBrokerDeskInvoice> {
-    throw new Error("Not implemented");
+    return addInvoiceLine(invoiceId, body);
   }
 
   /**
@@ -176,7 +189,7 @@ export class BrokerDeskBillingInvoiceController {
     @TypedParam("lineId") lineId: string & tags.Format<"uuid">,
     @TypedBody() body: IBrokerDeskInvoiceLine.IUpdate,
   ): Promise<IBrokerDeskInvoice> {
-    throw new Error("Not implemented");
+    return updateInvoiceLine(invoiceId, lineId, body);
   }
 
   /**
@@ -191,6 +204,6 @@ export class BrokerDeskBillingInvoiceController {
     @TypedParam("invoiceId") invoiceId: string & tags.Format<"uuid">,
     @TypedParam("lineId") lineId: string & tags.Format<"uuid">,
   ): Promise<IBrokerDeskInvoice> {
-    throw new Error("Not implemented");
+    return eraseInvoiceLine(invoiceId, lineId);
   }
 }

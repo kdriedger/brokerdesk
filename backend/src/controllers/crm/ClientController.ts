@@ -6,8 +6,21 @@ import {
   IBrokerDeskClient,
   IBrokerDeskClientDocument,
   IBrokerDeskClientTag,
+  IPageIBrokerDeskClientSummary,
 } from "../../api/structures/BrokerDeskCrmClient";
-import { IPageIBrokerDeskClientSummary } from "../../api/structures/BrokerDeskCrmClient";
+import {
+  deleteCrmClient,
+  deleteCrmClientTag,
+  getCrmClient,
+  getCrmClientDocuments,
+  getCrmClientTags,
+  getCrmClientTimeline,
+  patchCrmClients,
+  postCrmClient,
+  postCrmClientDocument,
+  postCrmClientTag,
+  putCrmClient,
+} from "../../providers/crm/clients";
 
 /**
  * CRM client controller covering the client book of business: listing and
@@ -33,7 +46,7 @@ export class BrokerDeskCrmClientController {
   public async index(
     @TypedBody() body: IBrokerDeskClient.IRequest,
   ): Promise<IPageIBrokerDeskClientSummary> {
-    throw new Error("Not implemented");
+    return patchCrmClients(body);
   }
 
   /**
@@ -49,7 +62,7 @@ export class BrokerDeskCrmClientController {
   public async at(
     @TypedParam("clientId") clientId: string & tags.Format<"uuid">,
   ): Promise<IBrokerDeskClient> {
-    throw new Error("Not implemented");
+    return getCrmClient(clientId);
   }
 
   /**
@@ -67,7 +80,7 @@ export class BrokerDeskCrmClientController {
   public async create(
     @TypedBody() body: IBrokerDeskClient.ICreate,
   ): Promise<IBrokerDeskClient> {
-    throw new Error("Not implemented");
+    return postCrmClient(body);
   }
 
   /**
@@ -85,7 +98,7 @@ export class BrokerDeskCrmClientController {
     @TypedParam("clientId") clientId: string & tags.Format<"uuid">,
     @TypedBody() body: IBrokerDeskClient.IUpdate,
   ): Promise<IBrokerDeskClient> {
-    throw new Error("Not implemented");
+    return putCrmClient(clientId, body);
   }
 
   /**
@@ -101,7 +114,7 @@ export class BrokerDeskCrmClientController {
   public async erase(
     @TypedParam("clientId") clientId: string & tags.Format<"uuid">,
   ): Promise<void> {
-    throw new Error("Not implemented");
+    return deleteCrmClient(clientId);
   }
 
   /**
@@ -118,7 +131,7 @@ export class BrokerDeskCrmClientController {
   public async timeline(
     @TypedParam("clientId") clientId: string & tags.Format<"uuid">,
   ): Promise<IBrokerDeskClient.ITimeline> {
-    throw new Error("Not implemented");
+    return getCrmClientTimeline(clientId);
   }
 
   /**
@@ -131,7 +144,7 @@ export class BrokerDeskCrmClientController {
   public async tags(
     @TypedParam("clientId") clientId: string & tags.Format<"uuid">,
   ): Promise<IBrokerDeskClientTag[]> {
-    throw new Error("Not implemented");
+    return getCrmClientTags(clientId);
   }
 
   /**
@@ -149,7 +162,7 @@ export class BrokerDeskCrmClientController {
     @TypedParam("clientId") clientId: string & tags.Format<"uuid">,
     @TypedBody() body: { value: string },
   ): Promise<IBrokerDeskClientTag> {
-    throw new Error("Not implemented");
+    return postCrmClientTag(clientId, body);
   }
 
   /**
@@ -164,7 +177,7 @@ export class BrokerDeskCrmClientController {
     @TypedParam("clientId") clientId: string & tags.Format<"uuid">,
     @TypedParam("tagId") tagId: string & tags.Format<"uuid">,
   ): Promise<void> {
-    throw new Error("Not implemented");
+    return deleteCrmClientTag(clientId, tagId);
   }
 
   /**
@@ -177,7 +190,7 @@ export class BrokerDeskCrmClientController {
   public async documents(
     @TypedParam("clientId") clientId: string & tags.Format<"uuid">,
   ): Promise<IBrokerDeskClientDocument[]> {
-    throw new Error("Not implemented");
+    return getCrmClientDocuments(clientId);
   }
 
   /**
@@ -202,6 +215,6 @@ export class BrokerDeskCrmClientController {
       checksum?: string | null;
     },
   ): Promise<IBrokerDeskClientDocument> {
-    throw new Error("Not implemented");
+    return postCrmClientDocument(clientId, body);
   }
 }

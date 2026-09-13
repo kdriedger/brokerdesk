@@ -2,6 +2,14 @@ import { TypedBody, TypedRoute } from "@nestia/core";
 import { Controller } from "@nestjs/common";
 
 import { IBrokerDeskCsr } from "../../api/structures/BrokerDeskActorsCsr";
+import {
+  postAuthCsrEmailVerifyConfirm,
+  postAuthCsrEmailVerifyRequest,
+  postAuthCsrLogin,
+  postAuthCsrPasswordResetConfirm,
+  postAuthCsrPasswordResetRequest,
+  postAuthCsrRefresh,
+} from "../../providers/auth/csr";
 
 /**
  * Authentication gateway for customer service representatives.
@@ -29,7 +37,7 @@ export class BrokerDeskActorsCsrAuthController {
   public async login(
     @TypedBody() body: IBrokerDeskCsr.ILogin,
   ): Promise<IBrokerDeskCsr.IAuthorized> {
-    throw new Error("Not implemented");
+    return postAuthCsrLogin(body);
   }
 
   /**
@@ -42,7 +50,7 @@ export class BrokerDeskActorsCsrAuthController {
   public async refresh(
     @TypedBody() body: IBrokerDeskCsr.IRefresh,
   ): Promise<IBrokerDeskCsr.IAuthorized> {
-    throw new Error("Not implemented");
+    return postAuthCsrRefresh(body);
   }
 
   /**
@@ -57,7 +65,7 @@ export class BrokerDeskActorsCsrAuthController {
   public async requestPasswordReset(
     @TypedBody() body: IBrokerDeskCsr.IRequestPasswordReset,
   ): Promise<void> {
-    throw new Error("Not implemented");
+    return postAuthCsrPasswordResetRequest(body);
   }
 
   /**
@@ -69,7 +77,7 @@ export class BrokerDeskActorsCsrAuthController {
   public async confirmPasswordReset(
     @TypedBody() body: IBrokerDeskCsr.IConfirmPasswordReset,
   ): Promise<void> {
-    throw new Error("Not implemented");
+    return postAuthCsrPasswordResetConfirm(body);
   }
 
   /**
@@ -83,7 +91,7 @@ export class BrokerDeskActorsCsrAuthController {
   public async requestEmailVerification(
     @TypedBody() body: IBrokerDeskCsr.IRequestEmailVerification,
   ): Promise<void> {
-    throw new Error("Not implemented");
+    return postAuthCsrEmailVerifyRequest(body);
   }
 
   /**
@@ -99,6 +107,6 @@ export class BrokerDeskActorsCsrAuthController {
   public async confirmEmailVerification(
     @TypedBody() body: IBrokerDeskCsr.IConfirmEmailVerification,
   ): Promise<void> {
-    throw new Error("Not implemented");
+    return postAuthCsrEmailVerifyConfirm(body);
   }
 }

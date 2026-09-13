@@ -6,6 +6,13 @@ import {
   IBrokerDeskCoverageItem,
   IPageIBrokerDeskCoverageItemISummary,
 } from "../../api/structures/BrokerDeskCatalogueProduct";
+import {
+  deleteCoverageItem,
+  invertCoverageItem,
+  patchCoverageItems,
+  postCoverageItems,
+  putCoverageItem,
+} from "../../providers/catalogue/coverageItem";
 
 /**
  * Product coverage-item administration controller.
@@ -29,7 +36,7 @@ export class BrokerDeskCatalogueCoverageItemController {
     @TypedParam("productId") productId: string & tags.Format<"uuid">,
     @TypedBody() body: IBrokerDeskCoverageItem.IRequest,
   ): Promise<IPageIBrokerDeskCoverageItemISummary> {
-    throw new Error("Not implemented");
+    return patchCoverageItems(productId, body);
   }
 
   /**
@@ -46,7 +53,7 @@ export class BrokerDeskCatalogueCoverageItemController {
     @TypedParam("productId") productId: string & tags.Format<"uuid">,
     @TypedBody() body: IBrokerDeskCoverageItem.ICreate,
   ): Promise<IBrokerDeskCoverageItem> {
-    throw new Error("Not implemented");
+    return postCoverageItems(productId, body);
   }
 
   /**
@@ -61,7 +68,7 @@ export class BrokerDeskCatalogueCoverageItemController {
     @TypedParam("productId") productId: string & tags.Format<"uuid">,
     @TypedParam("coverageItemId") coverageItemId: string & tags.Format<"uuid">,
   ): Promise<IBrokerDeskCoverageItem.IInvert> {
-    throw new Error("Not implemented");
+    return invertCoverageItem(productId, coverageItemId);
   }
 
   /**
@@ -81,7 +88,7 @@ export class BrokerDeskCatalogueCoverageItemController {
     @TypedParam("coverageItemId") coverageItemId: string & tags.Format<"uuid">,
     @TypedBody() body: IBrokerDeskCoverageItem.IUpdate,
   ): Promise<IBrokerDeskCoverageItem> {
-    throw new Error("Not implemented");
+    return putCoverageItem(productId, coverageItemId, body);
   }
 
   /**
@@ -95,6 +102,6 @@ export class BrokerDeskCatalogueCoverageItemController {
     @TypedParam("productId") productId: string & tags.Format<"uuid">,
     @TypedParam("coverageItemId") coverageItemId: string & tags.Format<"uuid">,
   ): Promise<void> {
-    throw new Error("Not implemented");
+    return deleteCoverageItem(productId, coverageItemId);
   }
 }

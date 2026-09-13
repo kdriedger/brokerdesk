@@ -3,6 +3,13 @@ import { Controller } from "@nestjs/common";
 import { tags } from "typia";
 
 import { IBrokerDeskClientContact } from "../../api/structures/BrokerDeskCrmClient";
+import {
+  deleteCrmClientContact,
+  getCrmClientContact,
+  getCrmClientContacts,
+  postCrmClientContact,
+  putCrmClientContact,
+} from "../../providers/crm/contacts";
 
 /**
  * Contact directory controller nested under business clients.
@@ -26,7 +33,7 @@ export class BrokerDeskCrmClientContactController {
   public async index(
     @TypedParam("clientId") clientId: string & tags.Format<"uuid">,
   ): Promise<IBrokerDeskClientContact[]> {
-    throw new Error("Not implemented");
+    return getCrmClientContacts(clientId);
   }
 
   /**
@@ -41,7 +48,7 @@ export class BrokerDeskCrmClientContactController {
     @TypedParam("clientId") clientId: string & tags.Format<"uuid">,
     @TypedParam("contactId") contactId: string & tags.Format<"uuid">,
   ): Promise<IBrokerDeskClientContact> {
-    throw new Error("Not implemented");
+    return getCrmClientContact(clientId, contactId);
   }
 
   /**
@@ -59,7 +66,7 @@ export class BrokerDeskCrmClientContactController {
     @TypedParam("clientId") clientId: string & tags.Format<"uuid">,
     @TypedBody() body: IBrokerDeskClientContact.ICreate,
   ): Promise<IBrokerDeskClientContact> {
-    throw new Error("Not implemented");
+    return postCrmClientContact(clientId, body);
   }
 
   /**
@@ -76,7 +83,7 @@ export class BrokerDeskCrmClientContactController {
     @TypedParam("contactId") contactId: string & tags.Format<"uuid">,
     @TypedBody() body: IBrokerDeskClientContact.IUpdate,
   ): Promise<IBrokerDeskClientContact> {
-    throw new Error("Not implemented");
+    return putCrmClientContact(clientId, contactId, body);
   }
 
   /**
@@ -91,6 +98,6 @@ export class BrokerDeskCrmClientContactController {
     @TypedParam("clientId") clientId: string & tags.Format<"uuid">,
     @TypedParam("contactId") contactId: string & tags.Format<"uuid">,
   ): Promise<void> {
-    throw new Error("Not implemented");
+    return deleteCrmClientContact(clientId, contactId);
   }
 }

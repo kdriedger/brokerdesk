@@ -6,6 +6,14 @@ import {
   IBrokerDeskTask,
   IPageIBrokerDeskTaskSummary,
 } from "../../api/structures/BrokerDeskCrmTask";
+import {
+  deleteCrmTask,
+  getCrmTask,
+  getCrmTasksMe,
+  patchCrmTasks,
+  postCrmTask,
+  putCrmTask,
+} from "../../providers/crm/tasks";
 
 /**
  * Task controller for follow-up work items across the brokerage.
@@ -29,7 +37,7 @@ export class BrokerDeskCrmTaskController {
   public async index(
     @TypedBody() body: IBrokerDeskTask.IRequest,
   ): Promise<IPageIBrokerDeskTaskSummary> {
-    throw new Error("Not implemented");
+    return patchCrmTasks(body);
   }
 
   /**
@@ -42,7 +50,7 @@ export class BrokerDeskCrmTaskController {
    */
   @TypedRoute.Get("me")
   public async me(): Promise<IBrokerDeskTask.IMyQueue> {
-    throw new Error("Not implemented");
+    return getCrmTasksMe();
   }
 
   /**
@@ -55,7 +63,7 @@ export class BrokerDeskCrmTaskController {
   public async at(
     @TypedParam("taskId") taskId: string & tags.Format<"uuid">,
   ): Promise<IBrokerDeskTask> {
-    throw new Error("Not implemented");
+    return getCrmTask(taskId);
   }
 
   /**
@@ -71,7 +79,7 @@ export class BrokerDeskCrmTaskController {
   public async create(
     @TypedBody() body: IBrokerDeskTask.ICreate,
   ): Promise<IBrokerDeskTask> {
-    throw new Error("Not implemented");
+    return postCrmTask(body);
   }
 
   /**
@@ -89,7 +97,7 @@ export class BrokerDeskCrmTaskController {
     @TypedParam("taskId") taskId: string & tags.Format<"uuid">,
     @TypedBody() body: IBrokerDeskTask.IUpdate,
   ): Promise<IBrokerDeskTask> {
-    throw new Error("Not implemented");
+    return putCrmTask(taskId, body);
   }
 
   /**
@@ -102,6 +110,6 @@ export class BrokerDeskCrmTaskController {
   public async erase(
     @TypedParam("taskId") taskId: string & tags.Format<"uuid">,
   ): Promise<void> {
-    throw new Error("Not implemented");
+    return deleteCrmTask(taskId);
   }
 }

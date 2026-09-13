@@ -2,6 +2,14 @@ import { TypedBody, TypedRoute } from "@nestia/core";
 import { Controller } from "@nestjs/common";
 
 import { IBrokerDeskProducer } from "../../api/structures/BrokerDeskActorsProducer";
+import {
+  postAuthProducerEmailVerifyConfirm,
+  postAuthProducerEmailVerifyRequest,
+  postAuthProducerLogin,
+  postAuthProducerPasswordResetConfirm,
+  postAuthProducerPasswordResetRequest,
+  postAuthProducerRefresh,
+} from "../../providers/auth/producer";
 
 /**
  * Authentication gateway for producers.
@@ -29,7 +37,7 @@ export class BrokerDeskActorsProducerAuthController {
   public async login(
     @TypedBody() body: IBrokerDeskProducer.ILogin,
   ): Promise<IBrokerDeskProducer.IAuthorized> {
-    throw new Error("Not implemented");
+    return postAuthProducerLogin(body);
   }
 
   /**
@@ -42,7 +50,7 @@ export class BrokerDeskActorsProducerAuthController {
   public async refresh(
     @TypedBody() body: IBrokerDeskProducer.IRefresh,
   ): Promise<IBrokerDeskProducer.IAuthorized> {
-    throw new Error("Not implemented");
+    return postAuthProducerRefresh(body);
   }
 
   /**
@@ -57,7 +65,7 @@ export class BrokerDeskActorsProducerAuthController {
   public async requestPasswordReset(
     @TypedBody() body: IBrokerDeskProducer.IRequestPasswordReset,
   ): Promise<void> {
-    throw new Error("Not implemented");
+    return postAuthProducerPasswordResetRequest(body);
   }
 
   /**
@@ -69,7 +77,7 @@ export class BrokerDeskActorsProducerAuthController {
   public async confirmPasswordReset(
     @TypedBody() body: IBrokerDeskProducer.IConfirmPasswordReset,
   ): Promise<void> {
-    throw new Error("Not implemented");
+    return postAuthProducerPasswordResetConfirm(body);
   }
 
   /**
@@ -83,7 +91,7 @@ export class BrokerDeskActorsProducerAuthController {
   public async requestEmailVerification(
     @TypedBody() body: IBrokerDeskProducer.IRequestEmailVerification,
   ): Promise<void> {
-    throw new Error("Not implemented");
+    return postAuthProducerEmailVerifyRequest(body);
   }
 
   /**
@@ -99,6 +107,6 @@ export class BrokerDeskActorsProducerAuthController {
   public async confirmEmailVerification(
     @TypedBody() body: IBrokerDeskProducer.IConfirmEmailVerification,
   ): Promise<void> {
-    throw new Error("Not implemented");
+    return postAuthProducerEmailVerifyConfirm(body);
   }
 }

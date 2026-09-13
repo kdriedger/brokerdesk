@@ -3,6 +3,11 @@ import { Controller } from "@nestjs/common";
 import { tags } from "typia";
 
 import { IBrokerDeskSubmissionMessage } from "../../api/structures/BrokerDeskQuoting";
+import {
+  deleteSubmissionMessage,
+  getSubmissionMessage,
+  postSubmissionMessage,
+} from "../../providers/quoting/submissionMessages";
 
 /**
  * Controller for the carrier conversation log attached to a submission,
@@ -28,7 +33,7 @@ export class BrokerDeskQuotingSubmissionMessageController {
     @TypedParam("submissionId") submissionId: string & tags.Format<"uuid">,
     @TypedBody() body: IBrokerDeskSubmissionMessage.ICreate,
   ): Promise<IBrokerDeskSubmissionMessage> {
-    throw new Error("Not implemented");
+    return postSubmissionMessage(quoteId, submissionId, body);
   }
 
   /**
@@ -45,7 +50,7 @@ export class BrokerDeskQuotingSubmissionMessageController {
     @TypedParam("submissionId") submissionId: string & tags.Format<"uuid">,
     @TypedParam("messageId") messageId: string & tags.Format<"uuid">,
   ): Promise<IBrokerDeskSubmissionMessage> {
-    throw new Error("Not implemented");
+    return getSubmissionMessage(quoteId, submissionId, messageId);
   }
 
   /**
@@ -62,6 +67,6 @@ export class BrokerDeskQuotingSubmissionMessageController {
     @TypedParam("submissionId") submissionId: string & tags.Format<"uuid">,
     @TypedParam("messageId") messageId: string & tags.Format<"uuid">,
   ): Promise<void> {
-    throw new Error("Not implemented");
+    return deleteSubmissionMessage(quoteId, submissionId, messageId);
   }
 }

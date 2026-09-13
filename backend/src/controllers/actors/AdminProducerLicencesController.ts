@@ -4,6 +4,13 @@ import { tags } from "typia";
 
 import { IBrokerDeskProducerLicence } from "../../api/structures/BrokerDeskActorsProducer";
 import { IPage } from "../../api/structures/IPage";
+import {
+  deleteAdminProducerLicences,
+  getAdminProducerLicencesAt,
+  patchAdminProducerLicences,
+  postAdminProducerLicences,
+  putAdminProducerLicences,
+} from "../../providers/admin/producerLicences";
 
 /**
  * Admin-managed provincial licence roster of a producer.
@@ -27,7 +34,7 @@ export class BrokerDeskActorsAdminProducerLicencesController {
     @TypedParam("producerId") producerId: string & tags.Format<"uuid">,
     @TypedBody() body: IBrokerDeskProducerLicence.IRequest,
   ): Promise<IPage<IBrokerDeskProducerLicence.ISummary>> {
-    throw new Error("Not implemented");
+    return patchAdminProducerLicences(producerId, body);
   }
 
   /**
@@ -42,7 +49,7 @@ export class BrokerDeskActorsAdminProducerLicencesController {
     @TypedParam("producerId") producerId: string & tags.Format<"uuid">,
     @TypedBody() body: IBrokerDeskProducerLicence.ICreate,
   ): Promise<IBrokerDeskProducerLicence> {
-    throw new Error("Not implemented");
+    return postAdminProducerLicences(producerId, body);
   }
 
   /**
@@ -57,7 +64,7 @@ export class BrokerDeskActorsAdminProducerLicencesController {
     @TypedParam("producerId") producerId: string & tags.Format<"uuid">,
     @TypedParam("licenceId") licenceId: string & tags.Format<"uuid">,
   ): Promise<IBrokerDeskProducerLicence> {
-    throw new Error("Not implemented");
+    return getAdminProducerLicencesAt(producerId, licenceId);
   }
 
   /**
@@ -77,7 +84,7 @@ export class BrokerDeskActorsAdminProducerLicencesController {
     @TypedParam("licenceId") licenceId: string & tags.Format<"uuid">,
     @TypedBody() body: IBrokerDeskProducerLicence.IUpdate,
   ): Promise<IBrokerDeskProducerLicence> {
-    throw new Error("Not implemented");
+    return putAdminProducerLicences(producerId, licenceId, body);
   }
 
   /**
@@ -93,6 +100,6 @@ export class BrokerDeskActorsAdminProducerLicencesController {
     @TypedParam("producerId") producerId: string & tags.Format<"uuid">,
     @TypedParam("licenceId") licenceId: string & tags.Format<"uuid">,
   ): Promise<void> {
-    throw new Error("Not implemented");
+    return deleteAdminProducerLicences(producerId, licenceId);
   }
 }

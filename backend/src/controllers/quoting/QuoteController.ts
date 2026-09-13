@@ -7,6 +7,15 @@ import {
   IBrokerDeskQuote,
   IBrokerDeskQuoteLine,
 } from "../../api/structures/BrokerDeskQuoting";
+import {
+  deleteQuote,
+  getQuote,
+  patchQuotes,
+  postQuoteBind,
+  postQuotePrice,
+  postQuotes,
+  putQuote,
+} from "../../providers/quoting/quotes";
 
 /**
  * Controller for the comparative quotation pipeline: create, browse,
@@ -28,7 +37,7 @@ export class BrokerDeskQuotingQuoteController {
   public async index(
     @TypedBody() body: IBrokerDeskQuote.IRequest,
   ): Promise<IPage<IBrokerDeskQuote.ISummary>> {
-    throw new Error("Not implemented");
+    return patchQuotes(body);
   }
 
   /**
@@ -44,7 +53,7 @@ export class BrokerDeskQuotingQuoteController {
   public async create(
     @TypedBody() body: IBrokerDeskQuote.ICreate,
   ): Promise<IBrokerDeskQuote> {
-    throw new Error("Not implemented");
+    return postQuotes(body);
   }
 
   /**
@@ -60,7 +69,7 @@ export class BrokerDeskQuotingQuoteController {
   public async at(
     @TypedParam("quoteId") quoteId: string & tags.Format<"uuid">,
   ): Promise<IBrokerDeskQuote> {
-    throw new Error("Not implemented");
+    return getQuote(quoteId);
   }
 
   /**
@@ -78,7 +87,7 @@ export class BrokerDeskQuotingQuoteController {
     @TypedParam("quoteId") quoteId: string & tags.Format<"uuid">,
     @TypedBody() body: IBrokerDeskQuote.IUpdate,
   ): Promise<IBrokerDeskQuote> {
-    throw new Error("Not implemented");
+    return putQuote(quoteId, body);
   }
 
   /**
@@ -90,7 +99,7 @@ export class BrokerDeskQuotingQuoteController {
   public async erase(
     @TypedParam("quoteId") quoteId: string & tags.Format<"uuid">,
   ): Promise<void> {
-    throw new Error("Not implemented");
+    return deleteQuote(quoteId);
   }
 
   /**
@@ -109,7 +118,7 @@ export class BrokerDeskQuotingQuoteController {
     @TypedParam("quoteId") quoteId: string & tags.Format<"uuid">,
     @TypedBody() body: IBrokerDeskQuote.IPrice,
   ): Promise<IBrokerDeskQuote.IPriceResult> {
-    throw new Error("Not implemented");
+    return postQuotePrice(quoteId, body);
   }
 
   /**
@@ -130,6 +139,6 @@ export class BrokerDeskQuotingQuoteController {
     @TypedParam("quoteId") quoteId: string & tags.Format<"uuid">,
     @TypedBody() body: IBrokerDeskQuote.IBind,
   ): Promise<IBrokerDeskQuote.IBindResult> {
-    throw new Error("Not implemented");
+    return postQuoteBind(quoteId, body);
   }
 }

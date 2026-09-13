@@ -6,6 +6,11 @@ import {
   IBrokerDeskCsrSession,
 } from "../../api/structures/BrokerDeskActorsCsr";
 import { IPage } from "../../api/structures/IPage";
+import {
+  getCsrMe,
+  patchCsrMeSessions,
+  putCsrMe,
+} from "../../providers/auth/csr";
 
 /**
  * CSR self-service surface.
@@ -24,7 +29,7 @@ export class BrokerDeskActorsCsrMeController {
    */
   @TypedRoute.Get()
   public async me(): Promise<IBrokerDeskCsr> {
-    throw new Error("Not implemented");
+    return getCsrMe();
   }
 
   /**
@@ -37,7 +42,7 @@ export class BrokerDeskActorsCsrMeController {
   public async update(
     @TypedBody() body: IBrokerDeskCsr.IUpdate,
   ): Promise<IBrokerDeskCsr> {
-    throw new Error("Not implemented");
+    return putCsrMe(body);
   }
 
   /**
@@ -50,6 +55,6 @@ export class BrokerDeskActorsCsrMeController {
   public async indexSessions(
     @TypedBody() body: IBrokerDeskCsrSession.IRequest,
   ): Promise<IPage<IBrokerDeskCsrSession.ISummary>> {
-    throw new Error("Not implemented");
+    return patchCsrMeSessions(body);
   }
 }

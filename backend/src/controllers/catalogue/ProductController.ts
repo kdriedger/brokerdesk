@@ -6,6 +6,13 @@ import {
   IBrokerDeskProduct,
   IPageIBrokerDeskProductISummary,
 } from "../../api/structures/BrokerDeskCatalogueProduct";
+import {
+  deleteProduct,
+  getProduct,
+  patchProducts,
+  postProducts,
+  putProduct,
+} from "../../providers/catalogue/product";
 
 /**
  * Catalogue product administration controller.
@@ -29,7 +36,7 @@ export class BrokerDeskCatalogueProductController {
   public async index(
     @TypedBody() body: IBrokerDeskProduct.IRequest,
   ): Promise<IPageIBrokerDeskProductISummary> {
-    throw new Error("Not implemented");
+    return patchProducts(body);
   }
 
   /**
@@ -45,7 +52,7 @@ export class BrokerDeskCatalogueProductController {
   public async create(
     @TypedBody() body: IBrokerDeskProduct.ICreate,
   ): Promise<IBrokerDeskProduct> {
-    throw new Error("Not implemented");
+    return postProducts(body);
   }
 
   /**
@@ -61,7 +68,7 @@ export class BrokerDeskCatalogueProductController {
   public async at(
     @TypedParam("productId") productId: string & tags.Format<"uuid">,
   ): Promise<IBrokerDeskProduct> {
-    throw new Error("Not implemented");
+    return getProduct(productId);
   }
 
   /**
@@ -80,7 +87,7 @@ export class BrokerDeskCatalogueProductController {
     @TypedParam("productId") productId: string & tags.Format<"uuid">,
     @TypedBody() body: IBrokerDeskProduct.IUpdate,
   ): Promise<IBrokerDeskProduct> {
-    throw new Error("Not implemented");
+    return putProduct(productId, body);
   }
 
   /**
@@ -95,6 +102,6 @@ export class BrokerDeskCatalogueProductController {
   public async erase(
     @TypedParam("productId") productId: string & tags.Format<"uuid">,
   ): Promise<void> {
-    throw new Error("Not implemented");
+    return deleteProduct(productId);
   }
 }

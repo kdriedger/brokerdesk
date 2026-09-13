@@ -3,6 +3,13 @@ import { Controller } from "@nestjs/common";
 
 import { IBrokerDeskClient } from "../../api/structures/BrokerDeskActorsClient";
 import { IPage } from "../../api/structures/IPage";
+import {
+  deleteAdminClients,
+  getAdminClientsAt,
+  patchAdminClients,
+  postAdminClients,
+  putAdminClients,
+} from "../../providers/admin/clients";
 
 /**
  * Admin-managed portal client identity roster.
@@ -31,7 +38,7 @@ export class BrokerDeskActorsAdminClientsController {
   public async index(
     @TypedBody() body: IBrokerDeskClient.IRequest,
   ): Promise<IPage<IBrokerDeskClient.ISummary>> {
-    throw new Error("Not implemented");
+    return patchAdminClients(body);
   }
 
   /**
@@ -44,7 +51,7 @@ export class BrokerDeskActorsAdminClientsController {
   public async at(
     @TypedParam("clientId") clientId: string,
   ): Promise<IBrokerDeskClient> {
-    throw new Error("Not implemented");
+    return getAdminClientsAt(clientId);
   }
 
   /**
@@ -60,7 +67,7 @@ export class BrokerDeskActorsAdminClientsController {
   public async create(
     @TypedBody() body: IBrokerDeskClient.ICreate,
   ): Promise<IBrokerDeskClient> {
-    throw new Error("Not implemented");
+    return postAdminClients(body);
   }
 
   /**
@@ -75,7 +82,7 @@ export class BrokerDeskActorsAdminClientsController {
     @TypedParam("clientId") clientId: string,
     @TypedBody() body: IBrokerDeskClient.IUpdate,
   ): Promise<IBrokerDeskClient> {
-    throw new Error("Not implemented");
+    return putAdminClients(clientId, body);
   }
 
   /**
@@ -89,6 +96,6 @@ export class BrokerDeskActorsAdminClientsController {
   public async erase(
     @TypedParam("clientId") clientId: string,
   ): Promise<void> {
-    throw new Error("Not implemented");
+    return deleteAdminClients(clientId);
   }
 }

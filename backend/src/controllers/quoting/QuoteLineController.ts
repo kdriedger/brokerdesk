@@ -3,6 +3,12 @@ import { Controller } from "@nestjs/common";
 import { tags } from "typia";
 
 import { IBrokerDeskQuoteLine } from "../../api/structures/BrokerDeskQuoting";
+import {
+  deleteQuoteLine,
+  getQuoteLine,
+  postQuoteLine,
+  putQuoteLine,
+} from "../../providers/quoting/quoteLines";
 
 /**
  * Controller for comparative quote lines, managed strictly within their
@@ -26,7 +32,7 @@ export class BrokerDeskQuotingQuoteLineController {
     @TypedParam("quoteId") quoteId: string & tags.Format<"uuid">,
     @TypedBody() body: IBrokerDeskQuoteLine.ICreate,
   ): Promise<IBrokerDeskQuoteLine> {
-    throw new Error("Not implemented");
+    return postQuoteLine(quoteId, body);
   }
 
   /**
@@ -41,7 +47,7 @@ export class BrokerDeskQuotingQuoteLineController {
     @TypedParam("quoteId") quoteId: string & tags.Format<"uuid">,
     @TypedParam("lineId") lineId: string & tags.Format<"uuid">,
   ): Promise<IBrokerDeskQuoteLine> {
-    throw new Error("Not implemented");
+    return getQuoteLine(quoteId, lineId);
   }
 
   /**
@@ -59,7 +65,7 @@ export class BrokerDeskQuotingQuoteLineController {
     @TypedParam("lineId") lineId: string & tags.Format<"uuid">,
     @TypedBody() body: IBrokerDeskQuoteLine.IUpdate,
   ): Promise<IBrokerDeskQuoteLine> {
-    throw new Error("Not implemented");
+    return putQuoteLine(quoteId, lineId, body);
   }
 
   /**
@@ -73,6 +79,6 @@ export class BrokerDeskQuotingQuoteLineController {
     @TypedParam("quoteId") quoteId: string & tags.Format<"uuid">,
     @TypedParam("lineId") lineId: string & tags.Format<"uuid">,
   ): Promise<void> {
-    throw new Error("Not implemented");
+    return deleteQuoteLine(quoteId, lineId);
   }
 }

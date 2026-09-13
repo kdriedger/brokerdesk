@@ -4,6 +4,12 @@ import { tags } from "typia";
 
 import { IPage } from "../../api/structures/IPage";
 import { IBrokerDeskSubmission } from "../../api/structures/BrokerDeskQuoting";
+import {
+  getSubmission,
+  patchSubmissions,
+  postSubmission,
+  putSubmission,
+} from "../../providers/quoting/submissions";
 
 /**
  * Controller for out-of-band carrier submissions tracked against
@@ -26,7 +32,7 @@ export class BrokerDeskQuotingSubmissionController {
     @TypedParam("quoteId") quoteId: string & tags.Format<"uuid">,
     @TypedBody() body: IBrokerDeskSubmission.IRequest,
   ): Promise<IPage<IBrokerDeskSubmission.ISummary>> {
-    throw new Error("Not implemented");
+    return patchSubmissions(quoteId, body);
   }
 
   /**
@@ -44,7 +50,7 @@ export class BrokerDeskQuotingSubmissionController {
     @TypedParam("quoteId") quoteId: string & tags.Format<"uuid">,
     @TypedBody() body: IBrokerDeskSubmission.ICreate,
   ): Promise<IBrokerDeskSubmission> {
-    throw new Error("Not implemented");
+    return postSubmission(quoteId, body);
   }
 
   /**
@@ -59,7 +65,7 @@ export class BrokerDeskQuotingSubmissionController {
     @TypedParam("quoteId") quoteId: string & tags.Format<"uuid">,
     @TypedParam("submissionId") submissionId: string & tags.Format<"uuid">,
   ): Promise<IBrokerDeskSubmission> {
-    throw new Error("Not implemented");
+    return getSubmission(quoteId, submissionId);
   }
 
   /**
@@ -77,6 +83,6 @@ export class BrokerDeskQuotingSubmissionController {
     @TypedParam("submissionId") submissionId: string & tags.Format<"uuid">,
     @TypedBody() body: IBrokerDeskSubmission.IUpdate,
   ): Promise<IBrokerDeskSubmission> {
-    throw new Error("Not implemented");
+    return putSubmission(quoteId, submissionId, body);
   }
 }

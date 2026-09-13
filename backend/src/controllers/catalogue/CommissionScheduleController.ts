@@ -3,6 +3,12 @@ import { Controller } from "@nestjs/common";
 import { tags } from "typia";
 
 import { IBrokerDeskCommissionSchedule } from "../../api/structures/BrokerDeskCatalogueProduct";
+import {
+  deleteCommissionSchedule,
+  getCommissionSchedule,
+  postCommissionSchedule,
+  putCommissionSchedule,
+} from "../../providers/catalogue/commissionSchedule";
 
 /**
  * Product commission-schedule administration controller.
@@ -24,7 +30,7 @@ export class BrokerDeskCatalogueCommissionScheduleController {
   public async at(
     @TypedParam("productId") productId: string & tags.Format<"uuid">,
   ): Promise<IBrokerDeskCommissionSchedule | null> {
-    throw new Error("Not implemented");
+    return getCommissionSchedule(productId);
   }
 
   /**
@@ -42,7 +48,7 @@ export class BrokerDeskCatalogueCommissionScheduleController {
     @TypedParam("productId") productId: string & tags.Format<"uuid">,
     @TypedBody() body: IBrokerDeskCommissionSchedule.ICreate,
   ): Promise<IBrokerDeskCommissionSchedule> {
-    throw new Error("Not implemented");
+    return postCommissionSchedule(productId, body);
   }
 
   /**
@@ -60,7 +66,7 @@ export class BrokerDeskCatalogueCommissionScheduleController {
     @TypedParam("productId") productId: string & tags.Format<"uuid">,
     @TypedBody() body: IBrokerDeskCommissionSchedule.IUpdate,
   ): Promise<IBrokerDeskCommissionSchedule> {
-    throw new Error("Not implemented");
+    return putCommissionSchedule(productId, body);
   }
 
   /**
@@ -74,6 +80,6 @@ export class BrokerDeskCatalogueCommissionScheduleController {
   public async erase(
     @TypedParam("productId") productId: string & tags.Format<"uuid">,
   ): Promise<void> {
-    throw new Error("Not implemented");
+    return deleteCommissionSchedule(productId);
   }
 }

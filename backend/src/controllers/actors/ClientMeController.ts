@@ -6,6 +6,11 @@ import {
   IBrokerDeskClientSession,
 } from "../../api/structures/BrokerDeskActorsClient";
 import { IPage } from "../../api/structures/IPage";
+import {
+  getClientMe,
+  patchClientMeSessions,
+  putClientMe,
+} from "../../providers/auth/client";
 
 /**
  * Portal client self-service surface.
@@ -24,7 +29,7 @@ export class BrokerDeskActorsClientMeController {
    */
   @TypedRoute.Get()
   public async me(): Promise<IBrokerDeskClient> {
-    throw new Error("Not implemented");
+    return getClientMe();
   }
 
   /**
@@ -37,7 +42,7 @@ export class BrokerDeskActorsClientMeController {
   public async update(
     @TypedBody() body: IBrokerDeskClient.IUpdate,
   ): Promise<IBrokerDeskClient> {
-    throw new Error("Not implemented");
+    return putClientMe(body);
   }
 
   /**
@@ -50,6 +55,6 @@ export class BrokerDeskActorsClientMeController {
   public async indexSessions(
     @TypedBody() body: IBrokerDeskClientSession.IRequest,
   ): Promise<IPage<IBrokerDeskClientSession.ISummary>> {
-    throw new Error("Not implemented");
+    return patchClientMeSessions(body);
   }
 }

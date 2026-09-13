@@ -2,6 +2,14 @@ import { TypedBody, TypedRoute } from "@nestia/core";
 import { Controller } from "@nestjs/common";
 
 import { IBrokerDeskClient } from "../../api/structures/BrokerDeskActorsClient";
+import {
+  postAuthClientEmailVerifyConfirm,
+  postAuthClientEmailVerifyRequest,
+  postAuthClientLogin,
+  postAuthClientPasswordResetConfirm,
+  postAuthClientPasswordResetRequest,
+  postAuthClientRefresh,
+} from "../../providers/auth/client";
 
 /**
  * Authentication gateway for portal client identities.
@@ -29,7 +37,7 @@ export class BrokerDeskActorsClientAuthController {
   public async login(
     @TypedBody() body: IBrokerDeskClient.ILogin,
   ): Promise<IBrokerDeskClient.IAuthorized> {
-    throw new Error("Not implemented");
+    return postAuthClientLogin(body);
   }
 
   /**
@@ -42,7 +50,7 @@ export class BrokerDeskActorsClientAuthController {
   public async refresh(
     @TypedBody() body: IBrokerDeskClient.IRefresh,
   ): Promise<IBrokerDeskClient.IAuthorized> {
-    throw new Error("Not implemented");
+    return postAuthClientRefresh(body);
   }
 
   /**
@@ -57,7 +65,7 @@ export class BrokerDeskActorsClientAuthController {
   public async requestPasswordReset(
     @TypedBody() body: IBrokerDeskClient.IRequestPasswordReset,
   ): Promise<void> {
-    throw new Error("Not implemented");
+    return postAuthClientPasswordResetRequest(body);
   }
 
   /**
@@ -69,7 +77,7 @@ export class BrokerDeskActorsClientAuthController {
   public async confirmPasswordReset(
     @TypedBody() body: IBrokerDeskClient.IConfirmPasswordReset,
   ): Promise<void> {
-    throw new Error("Not implemented");
+    return postAuthClientPasswordResetConfirm(body);
   }
 
   /**
@@ -84,7 +92,7 @@ export class BrokerDeskActorsClientAuthController {
   public async requestEmailVerification(
     @TypedBody() body: IBrokerDeskClient.IRequestEmailVerification,
   ): Promise<void> {
-    throw new Error("Not implemented");
+    return postAuthClientEmailVerifyRequest(body);
   }
 
   /**
@@ -98,6 +106,6 @@ export class BrokerDeskActorsClientAuthController {
   public async confirmEmailVerification(
     @TypedBody() body: IBrokerDeskClient.IConfirmEmailVerification,
   ): Promise<void> {
-    throw new Error("Not implemented");
+    return postAuthClientEmailVerifyConfirm(body);
   }
 }

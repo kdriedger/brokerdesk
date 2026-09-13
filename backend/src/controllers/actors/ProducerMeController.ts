@@ -7,6 +7,12 @@ import {
   IBrokerDeskProducerSession,
 } from "../../api/structures/BrokerDeskActorsProducer";
 import { IPage } from "../../api/structures/IPage";
+import {
+  getProducerMe,
+  patchProducerMeLicences,
+  patchProducerMeSessions,
+  putProducerMe,
+} from "../../providers/auth/producer";
 
 /**
  * Producer self-service surface.
@@ -26,7 +32,7 @@ export class BrokerDeskActorsProducerMeController {
    */
   @TypedRoute.Get()
   public async me(): Promise<IBrokerDeskProducer> {
-    throw new Error("Not implemented");
+    return getProducerMe();
   }
 
   /**
@@ -39,7 +45,7 @@ export class BrokerDeskActorsProducerMeController {
   public async update(
     @TypedBody() body: IBrokerDeskProducer.IUpdate,
   ): Promise<IBrokerDeskProducer> {
-    throw new Error("Not implemented");
+    return putProducerMe(body);
   }
 
   /**
@@ -52,7 +58,7 @@ export class BrokerDeskActorsProducerMeController {
   public async indexSessions(
     @TypedBody() body: IBrokerDeskProducerSession.IRequest,
   ): Promise<IPage<IBrokerDeskProducerSession.ISummary>> {
-    throw new Error("Not implemented");
+    return patchProducerMeSessions(body);
   }
 
   /**
@@ -69,6 +75,6 @@ export class BrokerDeskActorsProducerMeController {
   public async indexLicences(
     @TypedBody() body: IBrokerDeskProducerLicence.IRequest,
   ): Promise<IPage<IBrokerDeskProducerLicence.ISummary>> {
-    throw new Error("Not implemented");
+    return patchProducerMeLicences(body);
   }
 }

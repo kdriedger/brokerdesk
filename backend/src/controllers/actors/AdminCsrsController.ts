@@ -4,6 +4,13 @@ import { tags } from "typia";
 
 import { IBrokerDeskCsr } from "../../api/structures/BrokerDeskActorsCsr";
 import { IPage } from "../../api/structures/IPage";
+import {
+  deleteAdminCsrs,
+  getAdminCsrsAt,
+  patchAdminCsrs,
+  postAdminCsrs,
+  putAdminCsrs,
+} from "../../providers/admin/csrs";
 
 /**
  * Admin-managed CSR account roster.
@@ -25,7 +32,7 @@ export class BrokerDeskActorsAdminCsrsController {
   public async index(
     @TypedBody() body: IBrokerDeskCsr.IRequest,
   ): Promise<IPage<IBrokerDeskCsr.ISummary>> {
-    throw new Error("Not implemented");
+    return patchAdminCsrs(body);
   }
 
   /**
@@ -41,7 +48,7 @@ export class BrokerDeskActorsAdminCsrsController {
   public async create(
     @TypedBody() body: IBrokerDeskCsr.ICreate,
   ): Promise<IBrokerDeskCsr> {
-    throw new Error("Not implemented");
+    return postAdminCsrs(body);
   }
 
   /**
@@ -54,7 +61,7 @@ export class BrokerDeskActorsAdminCsrsController {
   public async at(
     @TypedParam("csrId") csrId: string & tags.Format<"uuid">,
   ): Promise<IBrokerDeskCsr> {
-    throw new Error("Not implemented");
+    return getAdminCsrsAt(csrId);
   }
 
   /**
@@ -71,7 +78,7 @@ export class BrokerDeskActorsAdminCsrsController {
     @TypedParam("csrId") csrId: string & tags.Format<"uuid">,
     @TypedBody() body: IBrokerDeskCsr.IUpdate,
   ): Promise<IBrokerDeskCsr> {
-    throw new Error("Not implemented");
+    return putAdminCsrs(csrId, body);
   }
 
   /**
@@ -86,6 +93,6 @@ export class BrokerDeskActorsAdminCsrsController {
   public async erase(
     @TypedParam("csrId") csrId: string & tags.Format<"uuid">,
   ): Promise<void> {
-    throw new Error("Not implemented");
+    return deleteAdminCsrs(csrId);
   }
 }
