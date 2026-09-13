@@ -7,7 +7,7 @@ class AppConfig {
   /// Backend API base URL. Override with --dart-define=API_BASE_URL=...
   static const String apiBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'http://localhost:3000',
+    defaultValue: 'http://localhost:37001',
   );
 
   /// Serve in-process fixtures instead of the NestJS API.

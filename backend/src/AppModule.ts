@@ -1,4 +1,7 @@
-import { Module } from "@nestjs/common";
+import { MiddlewareConsumer, Module, NestModule } from "@nestjs/common";
+
+import { AppController } from "./AppController";
+import { RequestContextMiddleware } from "./middleware/RequestContextMiddleware";
 
 import { BrokerDeskActorsAdminAuthController } from "./controllers/actors/AdminAuthController";
 import { BrokerDeskActorsAdminClientsController } from "./controllers/actors/AdminClientsController";
@@ -47,6 +50,7 @@ import { BrokerDeskSystematicOrganizationController } from "./controllers/system
 
 @Module({
   controllers: [
+    AppController,
     BrokerDeskActorsAdminAuthController,
     BrokerDeskActorsAdminClientsController,
     BrokerDeskActorsAdminCsrsController,
@@ -93,4 +97,8 @@ import { BrokerDeskSystematicOrganizationController } from "./controllers/system
     BrokerDeskSystematicOrganizationController,
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  public configure(consumer: MiddlewareConsumer): void {
+    consumer.apply(RequestContextMiddleware).forRoutes("*");
+  }
+}

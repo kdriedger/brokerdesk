@@ -6,6 +6,10 @@ import {
   IBrokerDeskGuestSession,
 } from "../../api/structures/BrokerDeskActorsGuest";
 import { IPage } from "../../api/structures/IPage";
+import {
+  patchAuthGuestSessions,
+  postAuthGuestJoin,
+} from "../../providers/auth/guest";
 
 /**
  * Authentication gateway for anonymous guests.
@@ -32,7 +36,7 @@ export class BrokerDeskActorsGuestAuthController {
   public async join(
     @TypedBody() body: IBrokerDeskGuest.IJoin,
   ): Promise<IBrokerDeskGuest.IAuthorized> {
-    throw new Error("Not implemented");
+    return postAuthGuestJoin(body);
   }
 
   /**
@@ -45,6 +49,6 @@ export class BrokerDeskActorsGuestAuthController {
   public async index(
     @TypedBody() body: IBrokerDeskGuestSession.IRequest,
   ): Promise<IPage<IBrokerDeskGuestSession.ISummary>> {
-    throw new Error("Not implemented");
+    return patchAuthGuestSessions(body);
   }
 }

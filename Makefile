@@ -7,7 +7,7 @@ db:
 	docker compose up -d postgres
 
 backend:
-	cd backend && pnpm dev
+	cd backend && DATABASE_URL=$${DATABASE_URL:-postgresql://brokerdesk:brokerdesk@127.0.0.1:5432/brokerdesk} pnpm start
 
 frontend:
 	cd frontend && flutter run -d linux

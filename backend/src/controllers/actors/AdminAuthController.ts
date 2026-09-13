@@ -6,6 +6,18 @@ import {
   IBrokerDeskAdminSession,
 } from "../../api/structures/BrokerDeskActorsAdmin";
 import { IPage } from "../../api/structures/IPage";
+import {
+  getAuthAdminMe,
+  patchAuthAdminSessions,
+  postAuthAdminEmailVerifyConfirm,
+  postAuthAdminEmailVerifyRequest,
+  postAuthAdminJoin,
+  postAuthAdminLogin,
+  postAuthAdminPasswordResetConfirm,
+  postAuthAdminPasswordResetRequest,
+  postAuthAdminRefresh,
+  putAuthAdminMe,
+} from "../../providers/auth/admin";
 
 /**
  * Authentication gateway and self-service surface for brokerage
@@ -36,7 +48,7 @@ export class BrokerDeskActorsAdminAuthController {
   public async join(
     @TypedBody() body: IBrokerDeskAdmin.IJoin,
   ): Promise<IBrokerDeskAdmin.IAuthorized> {
-    throw new Error("Not implemented");
+    return postAuthAdminJoin(body);
   }
 
   /**
@@ -53,7 +65,7 @@ export class BrokerDeskActorsAdminAuthController {
   public async login(
     @TypedBody() body: IBrokerDeskAdmin.ILogin,
   ): Promise<IBrokerDeskAdmin.IAuthorized> {
-    throw new Error("Not implemented");
+    return postAuthAdminLogin(body);
   }
 
   /**
@@ -69,7 +81,7 @@ export class BrokerDeskActorsAdminAuthController {
   public async refresh(
     @TypedBody() body: IBrokerDeskAdmin.IRefresh,
   ): Promise<IBrokerDeskAdmin.IAuthorized> {
-    throw new Error("Not implemented");
+    return postAuthAdminRefresh(body);
   }
 
   /**
@@ -85,7 +97,7 @@ export class BrokerDeskActorsAdminAuthController {
   public async requestPasswordReset(
     @TypedBody() body: IBrokerDeskAdmin.IRequestPasswordReset,
   ): Promise<void> {
-    throw new Error("Not implemented");
+    return postAuthAdminPasswordResetRequest(body);
   }
 
   /**
@@ -100,7 +112,7 @@ export class BrokerDeskActorsAdminAuthController {
   public async confirmPasswordReset(
     @TypedBody() body: IBrokerDeskAdmin.IConfirmPasswordReset,
   ): Promise<void> {
-    throw new Error("Not implemented");
+    return postAuthAdminPasswordResetConfirm(body);
   }
 
   /**
@@ -115,7 +127,7 @@ export class BrokerDeskActorsAdminAuthController {
   public async requestEmailVerification(
     @TypedBody() body: IBrokerDeskAdmin.IRequestEmailVerification,
   ): Promise<void> {
-    throw new Error("Not implemented");
+    return postAuthAdminEmailVerifyRequest(body);
   }
 
   /**
@@ -129,7 +141,7 @@ export class BrokerDeskActorsAdminAuthController {
   public async confirmEmailVerification(
     @TypedBody() body: IBrokerDeskAdmin.IConfirmEmailVerification,
   ): Promise<void> {
-    throw new Error("Not implemented");
+    return postAuthAdminEmailVerifyConfirm(body);
   }
 
   /**
@@ -145,7 +157,7 @@ export class BrokerDeskActorsAdminAuthController {
   public async index(
     @TypedBody() body: IBrokerDeskAdminSession.IRequest,
   ): Promise<IPage<IBrokerDeskAdminSession.ISummary>> {
-    throw new Error("Not implemented");
+    return patchAuthAdminSessions(body);
   }
 
   /**
@@ -158,7 +170,7 @@ export class BrokerDeskActorsAdminAuthController {
    */
   @TypedRoute.Get("me")
   public async me(): Promise<IBrokerDeskAdmin> {
-    throw new Error("Not implemented");
+    return getAuthAdminMe();
   }
 
   /**
@@ -171,6 +183,6 @@ export class BrokerDeskActorsAdminAuthController {
   public async update(
     @TypedBody() body: IBrokerDeskAdmin.IUpdate,
   ): Promise<IBrokerDeskAdmin> {
-    throw new Error("Not implemented");
+    return putAuthAdminMe(body);
   }
 }

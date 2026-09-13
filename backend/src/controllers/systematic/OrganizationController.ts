@@ -2,6 +2,11 @@ import { TypedBody, TypedRoute } from "@nestia/core";
 import { Controller } from "@nestjs/common";
 
 import { IBrokerDeskOrganization } from "../../api/structures/BrokerDeskSystematicOrganization";
+import {
+  getAdminOrganizationMe,
+  getAdminOrganizationSettings,
+  putAdminOrganizationMe,
+} from "../../providers/organization";
 
 /**
  * Organization profile and tenant settings endpoints for administrators.
@@ -30,7 +35,7 @@ export class BrokerDeskSystematicOrganizationController {
    */
   @TypedRoute.Get("me")
   public async at(): Promise<IBrokerDeskOrganization> {
-    throw new Error("Not implemented");
+    return getAdminOrganizationMe();
   }
 
   /**
@@ -48,7 +53,7 @@ export class BrokerDeskSystematicOrganizationController {
   public async update(
     @TypedBody() body: IBrokerDeskOrganization.IUpdate,
   ): Promise<IBrokerDeskOrganization> {
-    throw new Error("Not implemented");
+    return putAdminOrganizationMe(body);
   }
 
   /**
@@ -59,17 +64,9 @@ export class BrokerDeskSystematicOrganizationController {
    * are issued; seeded with Ontario HST 13% as the default example.
    *
    * @returns The current organization settings structure.
-   */  /**
-   * Retrieve the organization's configurable tax rate settings.
-   *
-   * Returns the per-province sales tax rate table (GST/HST/QST/exempt
-   * handling plus broker fee taxability flags) consulted when invoice lines
-   * are issued; seeded with Ontario HST 13% as the default example.
-   *
-   * @returns The current organization settings structure.
    */
   @TypedRoute.Get("settings")
   public async getSettings(): Promise<IBrokerDeskOrganization.ISettings> {
-    throw new Error("Not implemented");
+    return getAdminOrganizationSettings();
   }
 }
