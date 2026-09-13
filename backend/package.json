@@ -10,7 +10,9 @@
     "build:prisma": "prisma generate",
     "dev": "ts-node src/main.ts",
     "start": "ts-node src/main.ts",
-    "db:push": "prisma db push"
+    "db:push": "prisma db push",
+    "test": "node --test test/smoke-bind.test.mjs",
+    "test:smoke": "node --test test/smoke-bind.test.mjs"
   },
   "prisma": {
     "schema": "prisma/schema"

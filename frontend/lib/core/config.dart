@@ -11,8 +11,7 @@ class AppConfig {
   );
 
   /// Serve in-process fixtures instead of the NestJS API.
-  /// Default on while AutoBE generation is incomplete.
-  static const bool useMock = bool.fromEnvironment('USE_MOCK', defaultValue: true);
+  static const bool useMock = bool.fromEnvironment('USE_MOCK', defaultValue: false);
 
   /// Auto-login and walk every workspace page. Used by the demo recorder.
   static const bool demoTour = bool.fromEnvironment('DEMO_TOUR');
