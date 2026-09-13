@@ -139,10 +139,10 @@ export const decideRenewal = async (
       data: {
         id: nextId,
         organization_id: orgId,
-        client_id: prior.client_id,
-        carrier_id: prior.carrier_id,
-        product_id: prior.product_id,
-        producer_id: prior.producer_id,
+        client_id: prior.client.id,
+        carrier_id: prior.carrier.id,
+        product_id: prior.product.id,
+        producer_id: prior.producer.id,
         org_policy_number: orgNumber,
         carrier_policy_number: null,
         status: "active",
@@ -184,7 +184,7 @@ export const decideRenewal = async (
   } else {
     await writeCoverages(
       nextId,
-      await coveragesFromProduct(prior.product_id),
+      await coveragesFromProduct(prior.product.id),
       now,
     );
   }
