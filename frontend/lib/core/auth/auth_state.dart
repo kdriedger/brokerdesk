@@ -45,20 +45,22 @@ class AuthNotifier extends Notifier<AuthState> {
   Future<void> login(String email, String password) async {
     state = state.copyWith(busy: true, error: null);
     try {
-      final json = await ref.read(apiClientProvider).post('/auth/login', {
+      final json = await ref.read(apiClientProvider).post('/auth/admin/login', {
         'email': email,
         'password': password,
       });
-      final token = json['accessToken'] as String? ?? json['token'] as String?;
+      final map = Map<String, dynamic>.from(json as Map);
+      final tokenMap = map['token'] is Map ? Map<String, dynamic>.from(map['token'] as Map) : map;
+      final token = tokenMap['access'] as String? ?? map['accessToken'] as String? ?? map['token'] as String?;
       if (token == null) throw const FormatException('No access token in response');
-      final user = json['user'] as Map<String, dynamic>? ?? const {};
+      final user = Map<String, dynamic>.from((map['admin'] ?? map['user'] ?? const {}) as Map);
       state = AuthState(
         accessToken: token,
         user: AuthUser(
           id: '${user['id'] ?? ''}',
           email: '${user['email'] ?? email}',
-          name: '${user['displayName'] ?? user['name'] ?? email}',
-          role: '${user['role'] ?? 'PRODUCER'}',
+          name: '${user['display_name'] ?? user['displayName'] ?? user['name'] ?? email}',
+          role: '${user['role'] ?? 'ADMIN'}',
         ),
       );
     } catch (e) {

@@ -48,18 +48,25 @@ class MockApi {
     final key = '${method.toUpperCase()} $normalized';
     switch (key) {
       case 'POST /auth/login':
+      case 'POST /auth/admin/login':
         return _login(body);
       case 'GET /dashboard/summary':
+      case 'GET /workspace/dashboard':
         return _dashboard;
       case 'GET /clients':
+      case 'GET /workspace/clients':
         return {'items': _clients};
       case 'GET /quotes':
+      case 'GET /workspace/quotes':
         return {'items': _quotes};
       case 'GET /policies':
+      case 'GET /workspace/policies':
         return {'items': _policies};
       case 'GET /carriers':
+      case 'GET /workspace/carriers':
         return {'items': _carriers};
       case 'GET /reports/overview':
+      case 'GET /workspace/reports':
         return _reports;
       default:
         throw _MockHttpException(404, 'No mock for $key');

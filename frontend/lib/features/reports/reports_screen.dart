@@ -11,7 +11,7 @@ import '../../widgets/status_chip.dart';
 import '../../widgets/workspace_scaffold.dart';
 
 final reportsProvider = FutureProvider<ReportOverview>((ref) async {
-  final json = await ref.watch(apiClientProvider).get('/reports/overview');
+  final json = await ref.watch(apiClientProvider).get('/workspace/reports');
   return ReportOverview.fromJson(Map<String, dynamic>.from(json as Map));
 });
 

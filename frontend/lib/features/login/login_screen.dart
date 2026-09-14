@@ -23,7 +23,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   @override
   void initState() {
     super.initState();
-    if (AppConfig.useMock) {
+    if (AppConfig.useMock || AppConfig.demoTour) {
       _email.text = AppConfig.demoEmail;
       _password.text = AppConfig.demoPassword;
     }

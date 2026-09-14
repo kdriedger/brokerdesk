@@ -12,7 +12,8 @@
     "start": "ts-node src/main.ts",
     "db:push": "prisma db push",
     "test": "node --test test/smoke-bind.test.mjs",
-    "test:smoke": "node --test test/smoke-bind.test.mjs"
+    "test:smoke": "node --test test/smoke-bind.test.mjs",
+    "seed:demo": "node test/seed-demo.mjs"
   },
   "prisma": {
     "schema": "prisma/schema"

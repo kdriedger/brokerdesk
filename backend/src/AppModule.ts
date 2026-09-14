@@ -1,6 +1,7 @@
 import { MiddlewareConsumer, Module, NestModule } from "@nestjs/common";
 
 import { AppController } from "./AppController";
+import { WorkspaceController } from "./controllers/WorkspaceController";
 import { RequestContextMiddleware } from "./middleware/RequestContextMiddleware";
 
 import { BrokerDeskActorsAdminAuthController } from "./controllers/actors/AdminAuthController";
@@ -51,6 +52,7 @@ import { BrokerDeskSystematicOrganizationController } from "./controllers/system
 @Module({
   controllers: [
     AppController,
+    WorkspaceController,
     BrokerDeskActorsAdminAuthController,
     BrokerDeskActorsAdminClientsController,
     BrokerDeskActorsAdminCsrsController,

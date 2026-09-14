@@ -11,7 +11,7 @@ import '../../widgets/status_chip.dart';
 import '../../widgets/workspace_scaffold.dart';
 
 final policiesProvider = FutureProvider<List<PolicyRecord>>((ref) async {
-  final json = await ref.watch(apiClientProvider).get('/policies');
+  final json = await ref.watch(apiClientProvider).get('/workspace/policies');
   return itemsFrom(json, PolicyRecord.fromJson);
 });
 

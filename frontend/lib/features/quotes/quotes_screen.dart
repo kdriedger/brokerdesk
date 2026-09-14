@@ -11,7 +11,7 @@ import '../../widgets/status_chip.dart';
 import '../../widgets/workspace_scaffold.dart';
 
 final quotesProvider = FutureProvider<List<QuoteRecord>>((ref) async {
-  final json = await ref.watch(apiClientProvider).get('/quotes');
+  final json = await ref.watch(apiClientProvider).get('/workspace/quotes');
   return itemsFrom(json, QuoteRecord.fromJson);
 });
 

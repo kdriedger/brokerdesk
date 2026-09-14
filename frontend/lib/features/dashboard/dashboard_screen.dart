@@ -11,7 +11,7 @@ import '../../widgets/stat_card.dart';
 import '../../widgets/status_chip.dart';
 
 final dashboardProvider = FutureProvider<DashboardSummary>((ref) async {
-  final json = await ref.watch(apiClientProvider).get('/dashboard/summary');
+  final json = await ref.watch(apiClientProvider).get('/workspace/dashboard');
   return DashboardSummary.fromJson(Map<String, dynamic>.from(json as Map));
 });
 

@@ -11,7 +11,7 @@ import '../../widgets/status_chip.dart';
 import '../../widgets/workspace_scaffold.dart';
 
 final clientsProvider = FutureProvider<List<ClientRecord>>((ref) async {
-  final json = await ref.watch(apiClientProvider).get('/clients');
+  final json = await ref.watch(apiClientProvider).get('/workspace/clients');
   return itemsFrom(json, ClientRecord.fromJson);
 });
 

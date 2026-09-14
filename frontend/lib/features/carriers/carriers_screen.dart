@@ -10,7 +10,7 @@ import '../../widgets/status_chip.dart';
 import '../../widgets/workspace_scaffold.dart';
 
 final carriersProvider = FutureProvider<List<CarrierRecord>>((ref) async {
-  final json = await ref.watch(apiClientProvider).get('/carriers');
+  final json = await ref.watch(apiClientProvider).get('/workspace/carriers');
   return itemsFrom(json, CarrierRecord.fromJson);
 });
 

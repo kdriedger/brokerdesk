@@ -24,10 +24,10 @@ class DashboardSummary {
 
   factory DashboardSummary.fromJson(Map<String, dynamic> json) => DashboardSummary(
         organization: '${json['organization'] ?? ''}',
-        clients: json['clients'] as int? ?? 0,
-        openQuotes: json['openQuotes'] as int? ?? 0,
-        activePolicies: json['activePolicies'] as int? ?? 0,
-        expiries30d: json['expiries30d'] as int? ?? 0,
+        clients: (json['clients'] as num?)?.toInt() ?? 0,
+        openQuotes: (json['openQuotes'] as num?)?.toInt() ?? 0,
+        activePolicies: (json['activePolicies'] as num?)?.toInt() ?? 0,
+        expiries30d: (json['expiries30d'] as num?)?.toInt() ?? 0,
         pipelinePremium: (json['pipelinePremium'] as num?)?.toDouble() ?? 0,
         recentActivity: [
           for (final row in json['recentActivity'] as List? ?? const [])
@@ -73,8 +73,8 @@ class RenewalItem {
         policyNumber: '${json['policyNumber']}',
         client: '${json['client']}',
         expiry: '${json['expiry']}',
-        premium: (json['premium'] as num).toDouble(),
-        daysLeft: json['daysLeft'] as int,
+        premium: (json['premium'] as num?)?.toDouble() ?? 0,
+        daysLeft: (json['daysLeft'] as num?)?.toInt() ?? 0,
       );
 }
 
@@ -144,7 +144,7 @@ class QuoteRecord {
         client: '${json['client']}',
         products: '${json['products']}',
         carrier: '${json['carrier']}',
-        premium: (json['premium'] as num).toDouble(),
+        premium: (json['premium'] as num?)?.toDouble() ?? 0,
         status: '${json['status']}',
         effective: '${json['effective']}',
       );
@@ -181,7 +181,7 @@ class PolicyRecord {
         line: '${json['line']}',
         termStart: '${json['termStart']}',
         termEnd: '${json['termEnd']}',
-        premium: (json['premium'] as num).toDouble(),
+        premium: (json['premium'] as num?)?.toDouble() ?? 0,
         status: '${json['status']}',
       );
 }
@@ -215,7 +215,7 @@ class CarrierRecord {
         lines: '${json['lines']}',
         provinces: '${json['provinces']}',
         appointmentExpiry: '${json['appointmentExpiry']}',
-        activeProducts: json['activeProducts'] as int,
+        activeProducts: (json['activeProducts'] as num?)?.toInt() ?? 0,
       );
 }
 
@@ -255,8 +255,8 @@ class ProducerRow {
 
   factory ProducerRow.fromJson(Map<String, dynamic> json) => ProducerRow(
         name: '${json['name']}',
-        premium: (json['premium'] as num).toDouble(),
-        policies: json['policies'] as int,
+        premium: (json['premium'] as num?)?.toDouble() ?? 0,
+        policies: (json['policies'] as num?)?.toInt() ?? 0,
       );
 }
 
@@ -276,7 +276,7 @@ class CommissionRow {
   factory CommissionRow.fromJson(Map<String, dynamic> json) => CommissionRow(
         carrier: '${json['carrier']}',
         statement: '${json['statement']}',
-        amount: (json['amount'] as num).toDouble(),
+        amount: (json['amount'] as num?)?.toDouble() ?? 0,
         status: '${json['status']}',
       );
 }
