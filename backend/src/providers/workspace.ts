@@ -200,22 +200,24 @@ export const getWorkspaceCarriers = async () => {
     appointments.map((a) => [a.broker_desk_carrier_id, a]),
   );
   return {
-    items: carriers.map((row) => {
-      const appt = apptByCarrier.get(row.id);
-      const lines = [
-        ...new Set(row.products.map((p) => p.line_of_business)),
-      ].join(", ");
-      return {
-        id: row.id,
-        name: row.name,
-        code: row.code,
-        amBest: row.financial_strength_note ?? "—",
-        lines: lines || "—",
-        provinces: admin.organization.primary_province,
-        appointmentExpiry: appt?.expires_at ? ymd(appt.expires_at) : "—",
-        activeProducts: row.products.filter((p) => p.active).length,
-      };
-    }),
+    items: carriers
+      .filter((row) => apptByCarrier.has(row.id))
+      .map((row) => {
+        const appt = apptByCarrier.get(row.id);
+        const lines = [
+          ...new Set(row.products.map((p) => p.line_of_business)),
+        ].join(", ");
+        return {
+          id: row.id,
+          name: row.name,
+          code: row.code,
+          amBest: row.financial_strength_note ?? "—",
+          lines: lines || "—",
+          provinces: admin.organization.primary_province,
+          appointmentExpiry: appt?.expires_at ? ymd(appt.expires_at) : "—",
+          activeProducts: row.products.filter((p) => p.active).length,
+        };
+      }),
   };
 };
 

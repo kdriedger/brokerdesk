@@ -137,12 +137,46 @@ const quoteFlow = async (token, { clientId, productId, premium, fee, bind, effec
   ).json;
 };
 
+const ensureCommissions = async (token) => {
+  const existing = await req("PATCH", "/commissions", {
+    token,
+    body: { page: 1, limit: 1 },
+  });
+  if ((existing.json.pagination?.total_count ?? 0) > 0) return;
+  const policies = await req("PATCH", "/policies", {
+    token,
+    body: { page: 1, limit: 100 },
+  });
+  for (const policy of policies.json.data ?? []) {
+    const premium = policy.billed_premium_cad ?? 0;
+    const agency = Math.round(premium * 0.12 * 100) / 100;
+    const producerAmt = Math.round(agency * 0.6 * 100) / 100;
+    await req("POST", "/commissions", {
+      token,
+      body: {
+        broker_desk_policy_id: policy.id,
+        broker_desk_policy_endorsement_id: null,
+        broker_desk_carrier_id: policy.carrier.id,
+        broker_desk_producer_id: policy.producer.id,
+        premium_basis_cad: premium,
+        agency_rate_percent: 12,
+        agency_amount_cad: agency,
+        producer_split_rate_percent: 60,
+        producer_amount_cad: producerAmt,
+        status: "due",
+        statement_period: "2026-09",
+      },
+    });
+  }
+};
+
 const main = async () => {
   const health = await fetch(`${BASE}/`);
   if ((await health.text()) !== "OK") throw new Error("API not healthy");
   const token = await loginOrJoin();
   const book = (await req("GET", "/workspace/clients", { token })).json;
   if ((book.items ?? []).length >= 4) {
+    await ensureCommissions(token);
     console.log(`seed skip: ${(book.items ?? []).length} clients already present`);
     return;
   }
@@ -375,6 +409,7 @@ const main = async () => {
   });
 
   const dash = (await req("GET", "/workspace/dashboard", { token })).json;
+  await ensureCommissions(token);
   console.log(
     `seed ok org=${dash.organization} clients=${dash.clients} quotes=${dash.openQuotes} policies=${dash.activePolicies}`,
   );
